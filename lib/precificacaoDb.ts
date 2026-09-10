@@ -394,14 +394,20 @@ export async function criarCanal(entrada: EntradaCanal): Promise<CanalSalvo> {
   return { ...entrada, id: linha.id, ativo: true };
 }
 
+/**
+ * O tipo (Mercado Livre ou Shopee) fica de fora de propósito: trocá-lo mudaria
+ * quantas modalidades a conta tem, deixando anúncios órfãos de uma modalidade
+ * que deixou de existir. Para mudar de marketplace, cria-se outra conta.
+ */
 export async function atualizarCanal(
   id: number,
-  entrada: Omit<EntradaCanal, "nome" | "tipo">
+  entrada: Omit<EntradaCanal, "tipo">
 ): Promise<void> {
   await ensureSchemaPrecificacao();
   await sql`
     UPDATE prec_canais
-       SET imposto = ${entrada.imposto},
+       SET nome = ${entrada.nome},
+           imposto = ${entrada.imposto},
            antecipacao = ${entrada.antecipacao},
            embalagem = ${entrada.embalagem},
            promocao = ${entrada.promocaoPadrao}

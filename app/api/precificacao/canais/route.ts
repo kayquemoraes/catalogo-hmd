@@ -89,7 +89,12 @@ export async function PATCH(req: Request) {
     const id = Number(corpo.id);
     if (!id) throw new Error("Informe a conta.");
 
+    const nome = String(corpo.nome ?? "").trim();
+    if (!nome) throw new Error("A conta precisa de um nome.");
+    if (nome.length > 60) throw new Error("O nome da conta é longo demais.");
+
     await atualizarCanal(id, {
+      nome,
       imposto: fracao(corpo.imposto, "Imposto"),
       antecipacao: fracao(corpo.antecipacao, "Antecipação"),
       embalagem: reais(corpo.embalagem, "Embalagem"),
@@ -98,6 +103,9 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (erro) {
+    if (erro instanceof Error && erro.message.includes("prec_canais_nome_key")) {
+      return falha(new Error("Já existe outra conta com esse nome."));
+    }
     return falha(erro);
   }
 }

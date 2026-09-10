@@ -27,6 +27,7 @@ const NOME_TIPO: Record<TipoCanal, string> = {
 /** Compara só os campos editáveis, para saber se há algo por salvar. */
 function mudou(a: Conta, b: Conta): boolean {
   return (
+    a.nome !== b.nome ||
     a.imposto !== b.imposto ||
     a.antecipacao !== b.antecipacao ||
     a.embalagem !== b.embalagem ||
@@ -67,6 +68,10 @@ export default function Contas() {
     setContas((antes) => antes.map((c) => (c.id === id ? { ...c, ...campos } : c)));
 
   const salvar = async (conta: Conta) => {
+    if (!conta.nome.trim()) {
+      setErro("A conta precisa de um nome.");
+      return;
+    }
     setSalvando(conta.id);
     setErro(null);
     try {
@@ -75,6 +80,7 @@ export default function Contas() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: conta.id,
+          nome: conta.nome,
           imposto: conta.imposto,
           antecipacao: conta.antecipacao,
           embalagem: conta.embalagem,
@@ -92,12 +98,15 @@ export default function Contas() {
   };
 
   const remover = async (conta: Conta) => {
+    // Confere contra o nome que está no banco: se houver uma renomeação ainda
+    // não salva na tela, o nome digitado aqui não é o que a conta se chama.
+    const salvo = original.find((c) => c.id === conta.id) ?? conta;
     const texto =
       `Apagar a conta "${conta.nome}"?\n\n` +
       `Todos os anúncios dela — preços, comissões e promoções — serão apagados junto. ` +
       `Isso não tem desfazer.\n\nDigite o nome da conta para confirmar:`;
     const resposta = prompt(texto);
-    if (resposta !== conta.nome) {
+    if (resposta !== salvo.nome) {
       if (resposta !== null) setErro("Nome digitado não confere. Nada foi apagado.");
       return;
     }
@@ -110,7 +119,7 @@ export default function Contas() {
         body: JSON.stringify({ id: conta.id }),
       });
       if (!r.ok) throw new Error((await r.json()).erro ?? "Não foi possível apagar.");
-      setAviso(`Conta ${conta.nome} apagada.`);
+      setAviso(`Conta ${salvo.nome} apagada.`);
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
@@ -161,13 +170,27 @@ export default function Contas() {
                   key={conta.id}
                   className="border-sage bg-paper-raised rounded-[6px] border p-5"
                 >
-                  <div className="flex flex-wrap items-baseline justify-between gap-3">
-                    <h2 className="text-lg font-semibold">
-                      {conta.nome}
-                      <span className="text-muted ml-2 text-sm font-normal">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="sr-only" htmlFor={`nome-${conta.id}`}>
+                        Nome da conta
+                      </label>
+                      {/* Editável no lugar do título: o nome é o rótulo da
+                          conta, não uma propriedade escondida num formulário. */}
+                      <input
+                        id={`nome-${conta.id}`}
+                        value={conta.nome}
+                        maxLength={60}
+                        onChange={(e) => alterar(conta.id, { nome: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                        }}
+                        className="border-transparent hover:border-sage focus:border-signal focus:bg-paper -ml-2 w-64 rounded-[6px] border bg-transparent px-2 py-1 text-lg font-semibold"
+                      />
+                      <span className="border-sage text-muted rounded-full border px-2 py-0.5 text-xs">
                         {NOME_TIPO[conta.tipo]}
                       </span>
-                    </h2>
+                    </div>
                     <button
                       onClick={() => void remover(conta)}
                       className="text-muted hover:text-alert text-xs underline underline-offset-4"
