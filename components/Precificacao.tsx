@@ -315,8 +315,18 @@ export default function Precificacao() {
 
   // --- resumo da página ----------------------------------------------------
 
+  /**
+   * Resumo da página em exibição — não da conta inteira, já que a lista é
+   * paginada.
+   *
+   * `comMargem` é contado à parte de `comPreco`: um anúncio de produto sem
+   * custo cadastrado tem preço mas não tem margem, e somá-lo ao divisor o
+   * faria contar como margem zero, puxando a média para baixo. Margem
+   * desconhecida não é margem nula.
+   */
   const resumo = useMemo(() => {
     let comPreco = 0;
+    let comMargem = 0;
     let prejuizo = 0;
     let soma = 0;
     for (const linha of linhas) {
@@ -325,11 +335,18 @@ export default function Precificacao() {
         const r = calcularAnuncio(linha, anuncio);
         if (!r) continue;
         comPreco++;
+        if (r.margem === null) continue;
+        comMargem++;
+        soma += r.margem;
         if (r.lucro < 0) prejuizo++;
-        if (r.margem !== null) soma += r.margem;
       }
     }
-    return { comPreco, prejuizo, margemMedia: comPreco ? soma / comPreco : 0 };
+    return {
+      comPreco,
+      comMargem,
+      prejuizo,
+      margemMedia: comMargem ? soma / comMargem : null,
+    };
   }, [linhas, calcularAnuncio]);
 
   const ultimaPagina = Math.max(1, Math.ceil(total / porPagina));
@@ -370,17 +387,25 @@ export default function Precificacao() {
             <div className="flex gap-3">
               <Indicador
                 rotulo="Margem média"
-                valor={resumo.comPreco > 0 ? pct(resumo.margemMedia) : "—"}
+                valor={resumo.margemMedia === null ? "—" : pct(resumo.margemMedia)}
                 nota={
-                  resumo.comPreco > 0
-                    ? `${inteiro.format(resumo.comPreco)} anúncios com preço`
-                    : "nenhum anúncio com preço"
+                  resumo.margemMedia === null
+                    ? resumo.comPreco > 0
+                      ? `${inteiro.format(resumo.comPreco)} com preço, nenhum com custo`
+                      : "nesta página"
+                    : `${inteiro.format(resumo.comMargem)} anúncios desta página`
                 }
               />
               <Indicador
                 rotulo="No prejuízo"
                 valor={inteiro.format(resumo.prejuizo)}
-                nota={resumo.prejuizo > 0 ? "vendem abaixo do custo" : "nenhum nesta página"}
+                nota={
+                  resumo.prejuizo > 0
+                    ? "vendem abaixo do custo"
+                    : resumo.comMargem > 0
+                      ? "nenhum nesta página"
+                      : "sem custo para comparar"
+                }
                 alerta={resumo.prejuizo > 0}
               />
             </div>
