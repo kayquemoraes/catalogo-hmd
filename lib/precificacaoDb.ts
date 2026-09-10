@@ -447,6 +447,9 @@ export async function carregarTabelaFrete(): Promise<TabelaFrete> {
 
 export type Situacao = "todos" | "anunciados" | "disponiveis";
 
+/** Recorte por saldo. "Em falta" inclui saldo negativo, que o Bling devolve. */
+export type Estoque = "todos" | "em_estoque" | "em_falta";
+
 export type LinhaTabela = {
   sku: string;
   nome: string;
@@ -480,6 +483,7 @@ export type Filtros = {
   nome?: string;
   marca?: string;
   situacao?: Situacao;
+  estoque?: Estoque;
 };
 
 /** "%termo%" ou "%" quando vazio — "%" casa com tudo, dispensando um SQL variável. */
@@ -495,6 +499,7 @@ export async function listarLinhas(
   await ensureSchemaPrecificacao();
 
   const situacao = opcoes.situacao ?? "todos";
+  const estoque = opcoes.estoque ?? "todos";
   const porPagina = Math.min(200, Math.max(10, opcoes.porPagina ?? 50));
   const pagina = Math.max(1, opcoes.pagina ?? 1);
   const offset = opcoes.todas ? 0 : (pagina - 1) * porPagina;
@@ -551,6 +556,14 @@ export async function listarLinhas(
     AND lower(coalesce(marca, '')) LIKE ${fMarca}
   `;
 
+  // Sem produto no catálogo o saldo é nulo; conta como falta, não como estoque.
+  const condEstoque =
+    estoque === "em_estoque"
+      ? sql`AND coalesce(saldo, 0) > 0`
+      : estoque === "em_falta"
+        ? sql`AND coalesce(saldo, 0) <= 0`
+        : sql``;
+
   const linhas = await sql<
     {
       sku: string;
@@ -565,7 +578,7 @@ export async function listarLinhas(
   >`
     WITH tudo AS (${base})
     SELECT * FROM tudo
-    ${condSituacao} ${condBusca}
+    ${condSituacao} ${condBusca} ${condEstoque}
     ORDER BY anunciado DESC, nome
     LIMIT ${limite} OFFSET ${offset}
   `;
@@ -573,7 +586,7 @@ export async function listarLinhas(
   const [{ total }] = await sql<{ total: number }[]>`
     WITH tudo AS (${base})
     SELECT count(*)::int AS total FROM tudo
-    ${condSituacao} ${condBusca}
+    ${condSituacao} ${condBusca} ${condEstoque}
   `;
 
   const skus = linhas.map((l) => l.sku);

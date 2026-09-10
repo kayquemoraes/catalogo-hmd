@@ -23,6 +23,7 @@ type CanalSalvo = {
 
 type Modalidade = "classico" | "premium" | "unico";
 type Situacao = "todos" | "anunciados" | "disponiveis";
+type Estoque = "todos" | "em_estoque" | "em_falta";
 
 type AnuncioLinha = {
   anuncioId: number;
@@ -91,6 +92,12 @@ const SITUACOES: { id: Situacao; rotulo: string }[] = [
   { id: "disponiveis", rotulo: "Não anunciados" },
 ];
 
+const ESTOQUES: { id: Estoque; rotulo: string }[] = [
+  { id: "todos", rotulo: "Tudo" },
+  { id: "em_estoque", rotulo: "Em estoque" },
+  { id: "em_falta", rotulo: "Em falta" },
+];
+
 export default function Precificacao() {
   const [contexto, setContexto] = useState<Contexto | null>(null);
   const [canalId, setCanalId] = useState<number | null>(null);
@@ -103,6 +110,7 @@ export default function Precificacao() {
   const [busca, setBusca] = useState({ sku: "", nome: "", marca: "" });
   const [filtro, setFiltro] = useState({ sku: "", nome: "", marca: "" });
   const [situacao, setSituacao] = useState<Situacao>("todos");
+  const [estoque, setEstoque] = useState<Estoque>("todos");
   const [resumo, setResumo] = useState<Resumo | null>(null);
 
   const [carregandoContexto, setCarregandoContexto] = useState(true);
@@ -140,12 +148,12 @@ export default function Precificacao() {
 
   /** Os filtros na forma que as duas rotas esperam. */
   const parametros = useMemo(() => {
-    const p = new URLSearchParams({ situacao });
+    const p = new URLSearchParams({ situacao, estoque });
     if (filtro.sku) p.set("sku", filtro.sku);
     if (filtro.nome) p.set("nome", filtro.nome);
     if (filtro.marca) p.set("marca", filtro.marca);
     return p.toString();
-  }, [filtro, situacao]);
+  }, [filtro, situacao, estoque]);
 
   const buscarLinhas = useCallback(async () => {
     if (!canalId) return;
@@ -207,18 +215,20 @@ export default function Precificacao() {
   const larguras =
     modalidades.length === 2
       ? {
-          produto: "13%",
-          custo: "5.5%",
-          peso: "4.5%",
-          acoes: "4%",
-          modalidade: ["4.5%", "4.5%", "7%", "4.5%", "5%", "5%", "6%"],
+          produto: "12%",
+          custo: "5%",
+          peso: "4%",
+          estoque: "4.5%",
+          acoes: "3.5%",
+          modalidade: ["4.3%", "4.3%", "7%", "4.4%", "4.8%", "4.8%", "5.9%"],
         }
       : {
-          produto: "24%",
-          custo: "8%",
-          peso: "6%",
-          acoes: "6%",
-          modalidade: ["7%", "7%", "11%", "6%", "8%", "8%", "9%"],
+          produto: "22%",
+          custo: "7%",
+          peso: "5.5%",
+          estoque: "6%",
+          acoes: "5%",
+          modalidade: ["6.5%", "6.5%", "11%", "6%", "7.5%", "8%", "9%"],
         };
 
   /**
@@ -486,25 +496,25 @@ export default function Precificacao() {
             onMudar={(v) => setBusca((b) => ({ ...b, marca: v }))}
           />
 
-          <div className="border-sage flex overflow-hidden rounded-[6px] border" role="group">
-            {SITUACOES.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => {
-                  setSituacao(s.id);
-                  setPagina(1);
-                }}
-                aria-pressed={situacao === s.id}
-                className={`px-3 py-2 text-sm transition-colors ${
-                  situacao === s.id
-                    ? "bg-signal font-medium text-white"
-                    : "text-muted hover:bg-sage/40"
-                }`}
-              >
-                {s.rotulo}
-              </button>
-            ))}
-          </div>
+          <GrupoDeFiltro
+            nome="Situação do anúncio"
+            opcoes={SITUACOES}
+            escolhido={situacao}
+            onEscolher={(v) => {
+              setSituacao(v);
+              setPagina(1);
+            }}
+          />
+
+          <GrupoDeFiltro
+            nome="Estoque"
+            opcoes={ESTOQUES}
+            escolhido={estoque}
+            onEscolher={(v) => {
+              setEstoque(v);
+              setPagina(1);
+            }}
+          />
 
           <p className="text-muted num text-sm">
             {carregandoLinhas ? "buscando…" : `${inteiro.format(total)} produtos`}
@@ -522,6 +532,7 @@ export default function Precificacao() {
               <col style={{ width: larguras.produto }} />
               <col style={{ width: larguras.custo }} />
               <col style={{ width: larguras.peso }} />
+              <col style={{ width: larguras.estoque }} />
               {modalidades.map((m) => (
                 <Fragment key={m}>
                   {larguras.modalidade.map((w, i) => (
@@ -542,6 +553,9 @@ export default function Precificacao() {
                 </th>
                 <th className="bg-sage border-sage sticky top-0 z-20 border-b px-1 py-2.5 font-semibold">
                   Peso
+                </th>
+                <th className="bg-sage border-sage sticky top-0 z-20 border-b px-1 py-2.5 font-semibold">
+                  Estoque
                 </th>
                 {modalidades.map((m, i) => (
                   <th
@@ -569,6 +583,9 @@ export default function Precificacao() {
                 <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal">
                   kg
                 </th>
+                <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal">
+                  saldo
+                </th>
                 {modalidades.map((m, i) => {
                   const secundaria = `bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal`;
                   const chave =
@@ -592,7 +609,7 @@ export default function Precificacao() {
             <tbody>
               {linhas.length === 0 && !carregandoLinhas && (
                 <tr>
-                  <td colSpan={4 + modalidades.length * 7} className="text-muted px-4 py-10 text-center">
+                  <td colSpan={5 + modalidades.length * 7} className="text-muted px-4 py-10 text-center">
                     Nenhum produto encontrado com esses filtros.
                   </td>
                 </tr>
@@ -615,6 +632,13 @@ export default function Precificacao() {
                   </td>
                   <td className="num text-muted px-1 py-1.5">
                     {linha.peso > 0 ? linha.peso.toLocaleString("pt-BR") : "—"}
+                  </td>
+                  <td
+                    className={`num px-1 py-1.5 ${
+                      linha.temProduto && linha.saldo <= 0 ? "text-amber font-medium" : "text-muted"
+                    }`}
+                  >
+                    {linha.temProduto ? inteiro.format(linha.saldo) : "—"}
                   </td>
 
                   {linha.anuncios.length === 0 ? (
@@ -709,6 +733,42 @@ export default function Precificacao() {
  * onde tirar o preço. O preço, esse, é sempre editável: cadastrar um valor não
  * depende de o catálogo já ter sido lido.
  */
+/** Um grupo de botões onde só um fica escolhido — os filtros de recorte. */
+function GrupoDeFiltro<T extends string>({
+  nome,
+  opcoes,
+  escolhido,
+  onEscolher,
+}: {
+  nome: string;
+  opcoes: { id: T; rotulo: string }[];
+  escolhido: T;
+  onEscolher: (valor: T) => void;
+}) {
+  return (
+    <div
+      className="border-sage flex overflow-hidden rounded-[6px] border"
+      role="group"
+      aria-label={nome}
+    >
+      {opcoes.map((o) => (
+        <button
+          key={o.id}
+          onClick={() => onEscolher(o.id)}
+          aria-pressed={escolhido === o.id}
+          className={`px-3 py-2 text-sm transition-colors ${
+            escolhido === o.id
+              ? "bg-signal font-medium text-white"
+              : "text-muted hover:bg-sage/40"
+          }`}
+        >
+          {o.rotulo}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Um campo de busca rotulado. Os três se somam: preencher dois restringe mais. */
 function CampoDeBusca({
   rotulo,
