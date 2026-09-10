@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { trocarCodigo } from "@/lib/bling";
+import { enderecoDaAplicacao } from "@/lib/appUrl";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -11,7 +12,14 @@ export async function GET(req: Request) {
   const esperado = jar.get("bling_state")?.value;
   jar.delete("bling_state");
 
-  const base = process.env.APP_URL ?? new URL(req.url).origin;
+  // Se APP_URL estiver ausente ou torta, ainda dá para voltar pela origem
+  // desta própria requisição — melhor que estourar em cima do usuário.
+  let base: string;
+  try {
+    base = enderecoDaAplicacao();
+  } catch {
+    base = new URL(req.url).origin;
+  }
 
   if (!esperado || state !== esperado) {
     return NextResponse.redirect(`${base}/?erro=state`);

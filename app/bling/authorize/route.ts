@@ -3,10 +3,11 @@ import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
 import { temSessao } from "@/lib/auth";
 import { urlDeAutorizacao } from "@/lib/bling";
+import { enderecoDaAplicacao } from "@/lib/appUrl";
 
 export async function GET() {
   if (!(await temSessao())) {
-    return NextResponse.redirect(new URL("/entrar", process.env.APP_URL));
+    return NextResponse.redirect(`${enderecoDaAplicacao()}/entrar`);
   }
 
   const state = randomUUID();

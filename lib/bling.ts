@@ -1,3 +1,4 @@
+import { enderecoDeCallback } from "./appUrl";
 import { sql, ensureSchema } from "./db";
 
 /**
@@ -14,19 +15,12 @@ export const ESCOPOS = "produtos";
 function config() {
   const clientId = process.env.BLING_CLIENT_ID;
   const clientSecret = process.env.BLING_CLIENT_SECRET;
-  const appUrl = process.env.APP_URL;
 
-  if (!clientId || !clientSecret || !appUrl) {
-    throw new Error(
-      "Faltam variáveis de ambiente: BLING_CLIENT_ID, BLING_CLIENT_SECRET ou APP_URL."
-    );
+  if (!clientId || !clientSecret) {
+    throw new Error("Faltam variáveis de ambiente: BLING_CLIENT_ID ou BLING_CLIENT_SECRET.");
   }
 
-  return {
-    clientId,
-    clientSecret,
-    redirectUri: `${appUrl.replace(/\/$/, "")}/bling/callback`,
-  };
+  return { clientId, clientSecret, redirectUri: enderecoDeCallback() };
 }
 
 export function urlDeAutorizacao(state: string): string {

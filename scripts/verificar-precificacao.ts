@@ -15,6 +15,7 @@ import {
   type Produto,
 } from "../lib/precificacao.ts";
 import { TABELA_FRETE_INICIAL as FRETE } from "../lib/freteInicial.ts";
+import { enderecoDaAplicacao, enderecoDeCallback } from "../lib/appUrl.ts";
 
 const ML: Canal = {
   tipo: "ml",
@@ -276,9 +277,55 @@ const okSemCusto = semCusto.margem === null;
 if (!okSemCusto) falhas++;
 console.log(`  ${okSemCusto ? "✓" : "✗"} Produto sem custo cadastrado devolve margem nula`);
 
+// --- Endereço da aplicação --------------------------------------------------
+// O que a APP_URL vira, na prática, é o redirect_uri enviado ao Bling. Um
+// "https://" faltando aqui derruba a autorização inteira com uma mensagem que
+// não aponta a causa, então cada forma de digitar errado tem seu caso.
+console.log("\n=== Normalização da APP_URL ===\n");
+
+const ESPERADO = "https://app.up.railway.app";
+const ENTRADAS: [string, string][] = [
+  ["https://app.up.railway.app", ESPERADO],
+  ["app.up.railway.app", ESPERADO],
+  ["https://app.up.railway.app/", ESPERADO],
+  ["app.up.railway.app///", ESPERADO],
+  ["  https://app.up.railway.app  ", ESPERADO],
+  ["http://localhost:3000", "http://localhost:3000"],
+  ["localhost:3000", "http://localhost:3000"],
+];
+
+for (const [entrada, esperado] of ENTRADAS) {
+  process.env.APP_URL = entrada;
+  let obtido: string;
+  try {
+    obtido = enderecoDaAplicacao();
+  } catch (e) {
+    obtido = `erro: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  const ok = obtido === esperado;
+  if (!ok) falhas++;
+  console.log(`  ${ok ? "✓" : "✗"} "${entrada}" -> ${obtido}`);
+}
+
+process.env.APP_URL = "app.up.railway.app";
+const callback = enderecoDeCallback();
+const okCallback = callback === `${ESPERADO}/bling/callback`;
+if (!okCallback) falhas++;
+console.log(`  ${okCallback ? "✓" : "✗"} callback -> ${callback}`);
+
+process.env.APP_URL = "";
+let recusou = false;
+try {
+  enderecoDaAplicacao();
+} catch {
+  recusou = true;
+}
+if (!recusou) falhas++;
+console.log(`  ${recusou ? "✓" : "✗"} APP_URL vazia é recusada com erro claro`);
+
 console.log(
   falhas === 0
-    ? "\n✅ TUDO CONFERE — o motor reproduz a planilha em todos os casos.\n"
+    ? "\n✅ TUDO CONFERE — motor, caminho inverso, casos de borda e APP_URL.\n"
     : `\n❌ ${falhas} verificação(ões) falharam.\n`
 );
 
