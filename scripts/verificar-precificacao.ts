@@ -16,6 +16,7 @@ import {
 } from "../lib/precificacao.ts";
 import { TABELA_FRETE_INICIAL as FRETE } from "../lib/freteInicial.ts";
 import { enderecoDaAplicacao, enderecoDeCallback } from "../lib/appUrl.ts";
+import { emPercentual, emReais, paraNumero } from "../lib/numero.ts";
 
 const ML: Canal = {
   tipo: "ml",
@@ -323,9 +324,51 @@ try {
 if (!recusou) falhas++;
 console.log(`  ${recusou ? "✓" : "✗"} APP_URL vazia é recusada com erro claro`);
 
+// --- Números digitados ------------------------------------------------------
+// A tela escreve "1.000,00" e aceita de volta o que a pessoa editar. Ler
+// errado aqui não dá erro nenhum: grava um preço absurdo em silêncio.
+console.log("\n=== Números digitados ===\n");
+
+const NUMEROS: [string, number | null][] = [
+  ["1000", 1000],
+  ["1.000,00", 1000],
+  ["1.234.567,89", 1234567.89],
+  ["1.000", 1000],        // centavos apagados de um "1.000,00"
+  ["32,5", 32.5],
+  ["32.5", 32.5],         // teclado numérico ou campo do navegador
+  ["0,75", 0.75],
+  ["0.75", 0.75],
+  ["R$ 1.999,90", 1999.9],
+  ["11,5", 11.5],
+  ["  42  ", 42],
+  ["", null],
+  ["abc", null],
+];
+
+for (const [entrada, esperado] of NUMEROS) {
+  const obtido = paraNumero(entrada);
+  const ok = obtido === esperado;
+  if (!ok) falhas++;
+  console.log(`  ${ok ? "✓" : "✗"} "${entrada}" -> ${obtido}`);
+}
+
+const idaEVolta: [string, number][] = [
+  [emReais(1000), 1000],
+  [emReais(1234567.89), 1234567.89],
+  [emReais(0.5), 0.5],
+  [emPercentual(11.5), 11.5],
+  [emPercentual(72.9, 1), 72.9],
+];
+for (const [texto, esperado] of idaEVolta) {
+  const volta = paraNumero(texto);
+  const ok = volta === esperado;
+  if (!ok) falhas++;
+  console.log(`  ${ok ? "✓" : "✗"} escreve "${texto}" e lê de volta ${volta}`);
+}
+
 console.log(
   falhas === 0
-    ? "\n✅ TUDO CONFERE — motor, caminho inverso, casos de borda e APP_URL.\n"
+    ? "\n✅ TUDO CONFERE — motor, caminho inverso, bordas, APP_URL e números.\n"
     : `\n❌ ${falhas} verificação(ões) falharam.\n`
 );
 

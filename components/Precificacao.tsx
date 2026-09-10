@@ -8,7 +8,7 @@ import {
   type TabelaFrete,
   type TipoCanal,
 } from "@/lib/precificacao";
-import { paraNumero } from "@/lib/numero";
+import { emPercentual, emReais, paraNumero } from "@/lib/numero";
 
 type CanalSalvo = {
   id: number;
@@ -340,18 +340,49 @@ export default function Precificacao() {
     <main className="min-h-screen">
       <header className="bg-ink text-paper">
         <div className="mx-auto max-w-[1800px] px-4 py-7 sm:px-6">
-          <div className="flex flex-wrap items-end justify-between gap-6">
-            <div>
+          <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-6">
+            <div className="min-w-0">
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Precificação</h1>
-              <p className="text-sage-deep mt-2 text-sm">
-                {carregandoContexto
-                  ? "Carregando…"
-                  : canal
-                    ? `${canal.nome} · ${canal.tipo === "ml" ? "Mercado Livre" : "Shopee"} · ` +
-                      `imposto ${pct(canal.imposto)} · antecipação ${pct(canal.antecipacao)} · ` +
-                      `embalagem ${moeda.format(canal.embalagem)}`
-                    : "Nenhuma conta cadastrada"}
-              </p>
+
+              {carregandoContexto ? (
+                <p className="text-sage-deep mt-3 text-sm">Carregando…</p>
+              ) : canal ? (
+                // Antes era uma frase corrida com quatro valores separados por
+                // pontos; virava um borrão. Cada dado agora tem rótulo próprio.
+                <dl className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <dt className="sr-only">Conta</dt>
+                    <dd className="text-paper text-base font-medium">{canal.nome}</dd>
+                    <span className="border-ink-line text-sage-deep rounded-full border px-2 py-0.5 text-[11px]">
+                      {canal.tipo === "ml" ? "Mercado Livre" : "Shopee"}
+                    </span>
+                  </div>
+                  <DadoDaConta rotulo="Imposto" valor={pct(canal.imposto)} />
+                  <DadoDaConta rotulo="Antecipação" valor={pct(canal.antecipacao)} />
+                  <DadoDaConta rotulo="Embalagem" valor={moeda.format(canal.embalagem)} />
+                </dl>
+              ) : (
+                <p className="text-sage-deep mt-3 text-sm">Nenhuma conta cadastrada</p>
+              )}
+            </div>
+
+            {/* Os dois números que dizem se a precificação está saudável. */}
+            <div className="flex gap-3">
+              <Indicador
+                rotulo="Margem média"
+                valor={resumo.comPreco > 0 ? pct(resumo.margemMedia) : "—"}
+                nota={
+                  resumo.comPreco > 0
+                    ? `${inteiro.format(resumo.comPreco)} anúncios com preço`
+                    : "nenhum anúncio com preço"
+                }
+              />
+              <Indicador
+                rotulo="No prejuízo"
+                valor={inteiro.format(resumo.prejuizo)}
+                nota={resumo.prejuizo > 0 ? "vendem abaixo do custo" : "nenhum nesta página"}
+                alerta={resumo.prejuizo > 0}
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -435,14 +466,6 @@ export default function Precificacao() {
 
           <p className="text-muted num text-sm">
             {carregandoLinhas ? "buscando…" : `${inteiro.format(total)} produtos`}
-            {resumo.comPreco > 0 && (
-              <>
-                {" · "}margem média {pct(resumo.margemMedia)}
-                {resumo.prejuizo > 0 && (
-                  <span className="text-alert"> · {resumo.prejuizo} no prejuízo</span>
-                )}
-              </>
-            )}
           </p>
         </div>
 
@@ -644,6 +667,50 @@ export default function Precificacao() {
  * onde tirar o preço. O preço, esse, é sempre editável: cadastrar um valor não
  * depende de o catálogo já ter sido lido.
  */
+/** Um par rótulo/valor da conta, no cabeçalho escuro. */
+function DadoDaConta({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <dt className="text-sage-deep text-[11px] tracking-wide uppercase">{rotulo}</dt>
+      <dd className="num text-paper text-sm font-medium">{valor}</dd>
+    </div>
+  );
+}
+
+/**
+ * Cartão de número no cabeçalho. Fica em vermelho quando o que ele conta é
+ * um problema — um único anúncio no prejuízo já merece ser visto de longe.
+ */
+function Indicador({
+  rotulo,
+  valor,
+  nota,
+  alerta,
+}: {
+  rotulo: string;
+  valor: string;
+  nota: string;
+  alerta?: boolean;
+}) {
+  return (
+    <div
+      className={`min-w-[9.5rem] rounded-[6px] border px-4 py-3 ${
+        alerta ? "border-alert/50 bg-alert/15" : "border-ink-line bg-ink-soft"
+      }`}
+    >
+      <p className="text-sage-deep text-[11px] tracking-wide uppercase">{rotulo}</p>
+      <p
+        className={`num mt-1 text-2xl leading-none font-semibold ${
+          alerta ? "text-alert-soft" : "text-paper"
+        }`}
+      >
+        {valor}
+      </p>
+      <p className="text-sage-deep mt-1.5 text-[11px]">{nota}</p>
+    </div>
+  );
+}
+
 function Celulas({
   anuncio,
   resultado,
@@ -686,7 +753,7 @@ function Celulas({
           type="text"
           inputMode="decimal"
           title="Percentual cobrado pelo marketplace"
-          defaultValue={Number((anuncio.comissao * 100).toFixed(3)).toString()}
+          defaultValue={emPercentual(anuncio.comissao * 100, 3)}
           key={`c-${anuncio.anuncioId}-${anuncio.comissao}`}
           onBlur={(e) => {
             const n = paraNumero(e.target.value);
@@ -704,7 +771,7 @@ function Celulas({
           type="text"
           inputMode="decimal"
           title="Desconto promocional deste anúncio"
-          defaultValue={Number((anuncio.promocao * 100).toFixed(3)).toString()}
+          defaultValue={emPercentual(anuncio.promocao * 100, 3)}
           key={`promo-${anuncio.anuncioId}-${anuncio.promocao}`}
           onBlur={(e) => {
             const n = paraNumero(e.target.value);
@@ -723,7 +790,7 @@ function Celulas({
           inputMode="decimal"
           placeholder="—"
           title="Preço do anúncio"
-          defaultValue={anuncio.preco > 0 ? anuncio.preco.toString() : ""}
+          defaultValue={anuncio.preco > 0 ? emReais(anuncio.preco) : ""}
           key={`p-${anuncio.anuncioId}-${anuncio.preco}`}
           onBlur={(e) => {
             const n = paraNumero(e.target.value);
@@ -759,7 +826,7 @@ function Celulas({
           }
           defaultValue={
             mostra && temCusto && resultado!.margem !== null
-              ? Number((resultado!.margem * 100).toFixed(1)).toString()
+              ? emPercentual(resultado!.margem * 100, 1)
               : ""
           }
           key={`m-${anuncio.anuncioId}-${anuncio.preco}-${anuncio.comissao}-${anuncio.promocao}`}

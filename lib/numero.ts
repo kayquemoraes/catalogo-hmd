@@ -1,29 +1,59 @@
 /**
- * Leitura de números digitados por pessoa.
+ * Leitura e escrita de números para pessoas, em português.
  *
- * Aceita "32,5" e "32.5". Quando aparecem os dois separadores, o último é o
- * decimal — "1.234,50" e "1,234.50" chegam ao mesmo número. Isso existe porque
- * o teclado brasileiro usa vírgula, mas um campo numérico do navegador devolve
- * ponto: tratar ponto sempre como separador de milhar transformaria 32.5 em 325.
+ * Os campos da tela mostram "1.000,00" e aceitam de volta o que a pessoa
+ * digitar — com vírgula, com ponto, com separador de milhar ou sem nada
+ * disso. Como o mesmo texto vira preço, a interpretação errada aqui não dá
+ * erro nenhum: ela só grava um valor absurdo silenciosamente.
+ */
+
+/** Valor monetário: 1000 vira "1.000,00". */
+export function emReais(n: number): string {
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Percentual sem o símbolo: 11.5 vira "11,5". */
+export function emPercentual(n: number, casas = 2): string {
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: casas });
+}
+
+/** Grupo de milhar do português: ponto seguido de exatamente três dígitos. */
+const SO_MILHARES = /^\d{1,3}(\.\d{3})+$/;
+
+/**
+ * Lê um número digitado.
+ *
+ * A vírgula é sempre decimal — é assim em português, sem ambiguidade. O ponto
+ * é que depende:
+ *
+ * - com vírgula também presente, o ponto é separador de milhar;
+ * - sozinho, em grupos de exatamente três dígitos ("1.000", "1.234.567"), é
+ *   separador de milhar. É o caso que aparece quando alguém apaga os centavos
+ *   de um "1.000,00" que a própria tela escreveu;
+ * - sozinho, em qualquer outra forma ("32.5", "0.75"), é decimal — é como um
+ *   teclado numérico ou um campo do navegador devolvem o valor.
  */
 export function paraNumero(texto: string): number | null {
-  const bruto = texto.trim().replace(/\s|R\$/gi, "");
+  const bruto = texto.trim().replace(/\s|R\$|%/gi, "");
   if (bruto === "") return null;
 
-  const ultimaVirgula = bruto.lastIndexOf(",");
-  const ultimoPonto = bruto.lastIndexOf(".");
+  const negativo = bruto.startsWith("-");
+  const corpo = negativo ? bruto.slice(1) : bruto;
 
   let limpo: string;
-  if (ultimaVirgula >= 0 && ultimoPonto >= 0) {
-    const decimal = ultimaVirgula > ultimoPonto ? "," : ".";
-    const milhar = decimal === "," ? "." : ",";
-    limpo = bruto.split(milhar).join("").replace(decimal, ".");
-  } else if (ultimaVirgula >= 0) {
-    limpo = bruto.replace(",", ".");
+  if (corpo.includes(",")) {
+    // Vírgula manda: tudo que for ponto antes dela é milhar.
+    const ultimaVirgula = corpo.lastIndexOf(",");
+    const inteiro = corpo.slice(0, ultimaVirgula).split(".").join("");
+    const decimal = corpo.slice(ultimaVirgula + 1);
+    limpo = `${inteiro}.${decimal}`;
+  } else if (SO_MILHARES.test(corpo)) {
+    limpo = corpo.split(".").join("");
   } else {
-    limpo = bruto;
+    limpo = corpo;
   }
 
   const n = Number(limpo);
-  return Number.isFinite(n) ? n : null;
+  if (!Number.isFinite(n)) return null;
+  return negativo ? -n : n;
 }
