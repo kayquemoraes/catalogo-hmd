@@ -1054,7 +1054,10 @@ function Celulas({
           // Parado mostra "72,9%", para ninguém ler o número como reais; ao
           // receber o foco, o símbolo sai e sobra só o que se digita.
           defaultValue={margemAtual === null ? "" : `${emPercentual(margemAtual, 1)}%`}
-          key={`m-${anuncio.anuncioId}-${anuncio.preco}-${anuncio.comissao}-${anuncio.promocao}`}
+          // Identificado pelo valor que exibe, e não pelo que o produz. A margem
+          // depende também dos custos da conta — antecipação, imposto,
+          // embalagem —, e listá-los aqui seria esquecer o próximo que entrar.
+          key={`m-${anuncio.anuncioId}-${margemAtual ?? "sem"}`}
           onFocus={(e) => {
             e.currentTarget.value = e.currentTarget.value.replace("%", "").trim();
             e.currentTarget.select();
