@@ -9,9 +9,13 @@
  */
 
 import {
+  buscarFrete,
   calcular,
+  comFaixaAdicionada,
+  comFaixaAlterada,
   comoCanal,
   precoParaMargem,
+  semFaixa,
   type Canal,
   type Produto,
 } from "../lib/precificacao.ts";
@@ -366,6 +370,91 @@ for (const [texto, esperado] of idaEVolta) {
   if (!ok) falhas++;
   console.log(`  ${ok ? "✓" : "✗"} escreve "${texto}" e lê de volta ${volta}`);
 }
+
+// --- Faixas da tabela de frete ----------------------------------------------
+// As faixas são percorridas em ordem e a busca para na primeira cujo teto
+// alcança o valor. Fora de ordem, uma faixa simplesmente nunca é escolhida —
+// e nada na tela denunciaria isso.
+console.log("\n=== Faixas da tabela de frete ===\n");
+
+function conferirFaixa(nome: string, condicao: boolean, detalhe = "") {
+  if (!condicao) falhas++;
+  console.log(`  ${condicao ? "✓" : "✗"} ${nome}${detalhe ? ` (${detalhe})` : ""}`);
+}
+
+const tetos = (t: typeof FRETE, eixo: "peso" | "preco") =>
+  (eixo === "peso" ? t.faixasPeso : t.faixasPreco).map((f) => f.ate);
+
+const crescente = (lista: (number | null)[]) => {
+  const numeros = lista.filter((n): n is number => n !== null);
+  const ordenados = numeros.every((n, i) => i === 0 || n > numeros[i - 1]);
+  const nuloSoNoFim = lista.slice(0, -1).every((n) => n !== null);
+  return ordenados && nuloSoNoFim;
+};
+
+conferirFaixa("a tabela original já vem crescente", crescente(tetos(FRETE, "peso")));
+
+// Acrescentar no meio: 0,4 kg cai entre "até 0,3" e "de 0,3 a 0,5".
+const comNova = comFaixaAdicionada(FRETE, "peso", { rotulo: "De 0,3 a 0,4 kg", ate: 0.4 });
+conferirFaixa(
+  "faixa nova entra na posição certa",
+  comNova.faixasPeso[1].ate === 0.4 && crescente(tetos(comNova, "peso")),
+  `tetos: ${tetos(comNova, "peso").slice(0, 4).join(", ")}…`
+);
+conferirFaixa(
+  "a faixa nova nasce cobrando o que já se cobrava ali",
+  buscarFrete(comNova, 0.35, 30).valor === buscarFrete(FRETE, 0.35, 30).valor,
+  `R$ ${buscarFrete(comNova, 0.35, 30).valor}`
+);
+conferirFaixa(
+  "produto fora do intervalo novo não muda de preço",
+  buscarFrete(comNova, 0.2, 30).valor === buscarFrete(FRETE, 0.2, 30).valor
+);
+
+let repetiu = false;
+try {
+  comFaixaAdicionada(FRETE, "peso", { rotulo: "Repetida", ate: 0.5 });
+} catch {
+  repetiu = true;
+}
+conferirFaixa("teto repetido é recusado", repetiu);
+
+// Alterar um teto para fora de ordem tem de reordenar, levando os valores.
+const antesDaTroca = buscarFrete(FRETE, 0.35, 30).valor;
+const trocada = comFaixaAlterada(FRETE, "peso", 1, { ate: 8.5 });
+conferirFaixa("teto alterado reordena a tabela", crescente(tetos(trocada, "peso")));
+conferirFaixa(
+  "os valores viajam junto com a faixa",
+  buscarFrete(trocada, 8.2, 30).valor === antesDaTroca,
+  `R$ ${buscarFrete(trocada, 8.2, 30).valor}`
+);
+
+let semTeto = false;
+try {
+  comFaixaAlterada(FRETE, "peso", FRETE.faixasPeso.length - 1, { ate: 200 });
+} catch {
+  semTeto = true;
+}
+conferirFaixa("a última faixa não aceita ganhar teto", semTeto);
+
+// Remover devolve o intervalo para a faixa seguinte.
+const semSegunda = semFaixa(FRETE, "peso", 1);
+conferirFaixa(
+  "remover mantém a ordem",
+  semSegunda.faixasPeso.length === FRETE.faixasPeso.length - 1 &&
+    crescente(tetos(semSegunda, "peso"))
+);
+conferirFaixa(
+  "o intervalo removido passa para a faixa seguinte",
+  buscarFrete(semSegunda, 0.35, 30).valor === buscarFrete(FRETE, 0.8, 30).valor
+);
+
+const semUltima = semFaixa(FRETE, "peso", FRETE.faixasPeso.length - 1);
+conferirFaixa(
+  "removida a última, a anterior herda o papel de recolher o resto",
+  semUltima.faixasPeso[semUltima.faixasPeso.length - 1].ate === null &&
+    buscarFrete(semUltima, 500, 30).valor > 0
+);
 
 // --- Interruptor da antecipação ---------------------------------------------
 // Desligar precisa zerar a taxa no cálculo sem apagar o percentual guardado,

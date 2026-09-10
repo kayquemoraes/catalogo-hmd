@@ -86,18 +86,46 @@ export default function Fretes() {
       ),
     }));
 
+  /**
+   * Faixas mudam a forma da tabela — acrescentar ou reordenar arrasta linhas e
+   * colunas —, então o servidor devolve a tabela inteira já resolvida em vez de
+   * a tela tentar prever o resultado.
+   */
+  const operarFaixa = useCallback(
+    async (metodo: "PATCH" | "POST" | "DELETE", corpo: Record<string, unknown>) => {
+      setSalvando((n) => n + 1);
+      try {
+        const r = await fetch("/api/precificacao/frete", {
+          method: metodo,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(corpo),
+        });
+        const dados = await r.json();
+        if (!r.ok) throw new Error(dados.erro ?? "Não foi possível salvar.");
+        if (dados.tabela) setTabela(dados.tabela);
+        setErro(null);
+        return true;
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : String(e));
+        return false;
+      } finally {
+        setSalvando((n) => n - 1);
+      }
+    },
+    []
+  );
+
   const salvarFaixa = (
     eixo: "peso" | "preco",
-    ordem: number,
-    campos: { rotulo?: string; ate?: number | null }
-  ) =>
-    enviar({ tipo: eixo === "peso" ? "faixaPeso" : "faixaPreco", ordem, ...campos }, (t) => {
-      const alvo = eixo === "peso" ? "faixasPeso" : "faixasPreco";
-      return {
-        ...t,
-        [alvo]: t[alvo].map((f, i) => (i === ordem ? { ...f, ...campos } : f)),
-      };
-    });
+    indice: number,
+    campos: { rotulo?: string; ate?: number }
+  ) => operarFaixa("PATCH", { tipo: "faixa", eixo, indice, ...campos });
+
+  const adicionarFaixa = (eixo: "peso" | "preco", rotulo: string, ate: number) =>
+    operarFaixa("POST", { eixo, rotulo, ate });
+
+  const removerFaixa = (eixo: "peso" | "preco", indice: number) =>
+    operarFaixa("DELETE", { eixo, indice });
 
   // --- tela ----------------------------------------------------------------
 
@@ -148,7 +176,12 @@ export default function Fretes() {
             />
 
             {editandoFaixas && (
-              <EditorDeFaixas tabela={tabela} onSalvar={salvarFaixa} />
+              <EditorDeFaixas
+                tabela={tabela}
+                onSalvar={salvarFaixa}
+                onAdicionar={adicionarFaixa}
+                onRemover={removerFaixa}
+              />
             )}
 
             <Matriz
@@ -266,35 +299,46 @@ function Simulador({
 function EditorDeFaixas({
   tabela,
   onSalvar,
+  onAdicionar,
+  onRemover,
 }: {
   tabela: TabelaFrete;
   onSalvar: (
     eixo: "peso" | "preco",
-    ordem: number,
-    campos: { rotulo?: string; ate?: number | null }
-  ) => void | Promise<void>;
+    indice: number,
+    campos: { rotulo?: string; ate?: number }
+  ) => Promise<boolean>;
+  onAdicionar: (eixo: "peso" | "preco", rotulo: string, ate: number) => Promise<boolean>;
+  onRemover: (eixo: "peso" | "preco", indice: number) => Promise<boolean>;
 }) {
   return (
     <section className="border-sage bg-paper-raised mb-4 rounded-[6px] border p-4">
       <h2 className="text-sm font-semibold">Faixas</h2>
-      <p className="text-muted mt-1 text-sm">
-        O <strong>limite</strong> é o teto da faixa. Peso usa &ldquo;menor que&rdquo; e preço usa
-        &ldquo;até&rdquo;, como na planilha de origem. A última faixa de cada eixo não tem teto —
-        ela recolhe tudo que passar das demais.
+      <p className="text-muted mt-1 max-w-3xl text-sm">
+        O <strong>limite</strong> e o teto da faixa, e as faixas ficam sempre em ordem
+        crescente — acrescentar uma a coloca no lugar certo sozinha. Dois limites iguais sao
+        recusados. A ultima faixa de cada eixo nao tem teto: e ela que recolhe tudo o que
+        passar das demais.
       </p>
 
       <div className="mt-4 grid gap-6 lg:grid-cols-2">
         <ListaDeFaixas
           titulo="Faixas de peso"
           unidade="kg"
+          exemplo="De 2 a 3 kg"
           faixas={tabela.faixasPeso}
-          onSalvar={(ordem, campos) => onSalvar("peso", ordem, campos)}
+          onSalvar={(i, campos) => onSalvar("peso", i, campos)}
+          onAdicionar={(rotulo, ate) => onAdicionar("peso", rotulo, ate)}
+          onRemover={(i) => onRemover("peso", i)}
         />
         <ListaDeFaixas
-          titulo="Faixas de preço"
+          titulo="Faixas de preco"
           unidade="R$"
+          exemplo="R$ 200 a R$ 249,99"
           faixas={tabela.faixasPreco}
-          onSalvar={(ordem, campos) => onSalvar("preco", ordem, campos)}
+          onSalvar={(i, campos) => onSalvar("preco", i, campos)}
+          onAdicionar={(rotulo, ate) => onAdicionar("preco", rotulo, ate)}
+          onRemover={(i) => onRemover("preco", i)}
         />
       </div>
     </section>
@@ -304,17 +348,36 @@ function EditorDeFaixas({
 function ListaDeFaixas({
   titulo,
   unidade,
+  exemplo,
   faixas,
   onSalvar,
+  onAdicionar,
+  onRemover,
 }: {
   titulo: string;
   unidade: string;
+  exemplo: string;
   faixas: { rotulo: string; ate: number | null }[];
-  onSalvar: (ordem: number, campos: { rotulo?: string; ate?: number | null }) => void | Promise<void>;
+  onSalvar: (indice: number, campos: { rotulo?: string; ate?: number }) => Promise<boolean>;
+  onAdicionar: (rotulo: string, ate: number) => Promise<boolean>;
+  onRemover: (indice: number) => Promise<boolean>;
 }) {
+  const [confirmando, setConfirmando] = useState<number | null>(null);
+  const [novoRotulo, setNovoRotulo] = useState("");
+  const [novoAte, setNovoAte] = useState("");
+
+  const ate = paraNumero(novoAte);
+  const podeAdicionar = novoRotulo.trim() !== "" && ate !== null && ate > 0;
+
+  const texto = (f: { ate: number | null }) =>
+    f.ate === null ? "" : String(f.ate).replace(".", ",");
+
   return (
     <div>
-      <h3 className="text-muted text-xs tracking-wide uppercase">{titulo}</h3>
+      <h3 className="text-muted text-xs tracking-wide uppercase">
+        {titulo} <span className="num">({faixas.length})</span>
+      </h3>
+
       <div className="border-sage mt-2 max-h-72 overflow-y-auto rounded-[6px] border">
         {faixas.map((f, i) => (
           <div
@@ -322,6 +385,7 @@ function ListaDeFaixas({
             className="border-sage/50 flex items-center gap-2 border-b px-2 py-1.5 last:border-b-0"
           >
             <span className="num text-muted w-6 shrink-0 text-right text-xs">{i + 1}</span>
+
             <input
               defaultValue={f.rotulo}
               key={`r-${i}-${f.rotulo}`}
@@ -332,30 +396,107 @@ function ListaDeFaixas({
               }}
               className="border-sage focus:border-signal min-w-0 flex-1 rounded-[4px] border px-2 py-1 text-sm"
             />
+
             <div className="flex shrink-0 items-center gap-1">
               <span className="text-muted text-xs">{unidade}</span>
               <input
-                defaultValue={f.ate === null ? "" : String(f.ate).replace(".", ",")}
+                defaultValue={texto(f)}
                 key={`a-${i}-${f.ate}`}
                 inputMode="decimal"
                 disabled={f.ate === null}
-                title={f.ate === null ? "A última faixa não tem teto" : "Teto desta faixa"}
+                title={f.ate === null ? "A ultima faixa nao tem teto" : "Teto desta faixa"}
                 onInput={(e) => apenasNumero(e.currentTarget)}
                 onBlur={(e) => {
                   const n = paraNumero(e.currentTarget.value);
                   if (n !== null && n !== f.ate) void onSalvar(i, { ate: n });
-                  else e.currentTarget.value = f.ate === null ? "" : String(f.ate).replace(".", ",");
+                  else e.currentTarget.value = texto(f);
                 }}
                 placeholder="sem teto"
                 className="num border-sage focus:border-signal w-20 rounded-[4px] border px-1.5 py-1 text-right text-sm disabled:opacity-40"
               />
             </div>
+
+            {confirmando === i ? (
+              <span className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={async () => {
+                    setConfirmando(null);
+                    await onRemover(i);
+                  }}
+                  className="bg-alert rounded-[4px] px-1.5 py-0.5 text-[11px] font-medium text-white"
+                >
+                  remover
+                </button>
+                <button
+                  onClick={() => setConfirmando(null)}
+                  className="text-muted hover:text-ink text-[11px]"
+                >
+                  nao
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setConfirmando(i)}
+                disabled={faixas.length <= 2}
+                title={
+                  faixas.length <= 2
+                    ? "A tabela precisa de pelo menos duas faixas"
+                    : "O intervalo desta faixa passa para a seguinte"
+                }
+                className="text-muted hover:text-alert shrink-0 text-[11px] underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                remover
+              </button>
+            )}
           </div>
         ))}
+      </div>
+
+      {/* Acrescentar: a posicao nao e escolhida, ela decorre do teto. */}
+      <div className="border-sage mt-2 flex flex-wrap items-end gap-2 rounded-[6px] border border-dashed p-2">
+        <label className="min-w-0 flex-1 text-sm">
+          <span className="text-muted block text-xs">Nome da faixa nova</span>
+          <input
+            value={novoRotulo}
+            onChange={(e) => setNovoRotulo(e.target.value)}
+            placeholder={exemplo}
+            className="border-sage focus:border-signal mt-1 w-full rounded-[4px] border px-2 py-1 text-sm"
+          />
+        </label>
+
+        <label className="text-sm">
+          <span className="text-muted block text-xs">Limite</span>
+          <div className="mt-1 flex items-center gap-1">
+            <span className="text-muted text-xs">{unidade}</span>
+            <input
+              value={novoAte}
+              inputMode="decimal"
+              onInput={(e) => apenasNumero(e.currentTarget)}
+              onChange={(e) => setNovoAte(e.target.value)}
+              className="num border-sage focus:border-signal w-20 rounded-[4px] border px-1.5 py-1 text-right text-sm"
+            />
+          </div>
+        </label>
+
+        <button
+          onClick={async () => {
+            if (!podeAdicionar) return;
+            const ok = await onAdicionar(novoRotulo.trim(), ate!);
+            if (ok) {
+              setNovoRotulo("");
+              setNovoAte("");
+            }
+          }}
+          disabled={!podeAdicionar}
+          className="bg-signal rounded-[4px] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Adicionar
+        </button>
       </div>
     </div>
   );
 }
+
 
 /** A matriz: peso nas linhas, preço nas colunas, cada valor editável. */
 function Matriz({

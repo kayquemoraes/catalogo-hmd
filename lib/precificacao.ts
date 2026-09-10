@@ -165,6 +165,167 @@ export function buscarFrete(
 }
 
 // ---------------------------------------------------------------------------
+// Alterar as faixas
+// ---------------------------------------------------------------------------
+
+/** Ordena por teto, com a faixa sem teto sempre por último. */
+function porTeto(a: Faixa, b: Faixa): number {
+  if (a.ate === null) return 1;
+  if (b.ate === null) return -1;
+  return a.ate - b.ate;
+}
+
+function eixoDe(tabela: TabelaFrete, eixo: "peso" | "preco"): Faixa[] {
+  return eixo === "peso" ? tabela.faixasPeso : tabela.faixasPreco;
+}
+
+/**
+ * Acrescenta uma faixa, já na posição certa pelo teto.
+ *
+ * Os valores da faixa nova são copiados da faixa seguinte — a que até então
+ * cobria aquele intervalo. É o único padrão que não muda nada: quem caía ali
+ * continua pagando o mesmo até alguém editar de propósito. Zerar faria a tabela
+ * mentir no instante seguinte à criação.
+ */
+export function comFaixaAdicionada(
+  tabela: TabelaFrete,
+  eixo: "peso" | "preco",
+  nova: { rotulo: string; ate: number }
+): TabelaFrete {
+  const rotulo = nova.rotulo.trim();
+  if (!rotulo) throw new Error("A faixa precisa de um nome.");
+  if (!Number.isFinite(nova.ate) || nova.ate <= 0) {
+    throw new Error("O limite da faixa precisa ser maior que zero.");
+  }
+
+  const atuais = eixoDe(tabela, eixo);
+  if (atuais.some((f) => f.ate === nova.ate)) {
+    throw new Error("Já existe uma faixa com esse limite.");
+  }
+
+  const faixas = [...atuais, { rotulo, ate: nova.ate }].sort(porTeto);
+  const posicao = faixas.findIndex((f) => f.ate === nova.ate);
+  // A faixa seguinte é a que cobria este intervalo até agora.
+  const origem = Math.min(posicao, atuais.length - 1);
+
+  if (eixo === "peso") {
+    const linha = [...(tabela.valores[origem] ?? atuais.map(() => 0))];
+    const valores = [...tabela.valores];
+    valores.splice(posicao, 0, linha);
+    return { ...tabela, faixasPeso: faixas, valores };
+  }
+
+  return {
+    ...tabela,
+    faixasPreco: faixas,
+    valores: tabela.valores.map((linha) => {
+      const copia = [...linha];
+      copia.splice(posicao, 0, linha[origem] ?? 0);
+      return copia;
+    }),
+  };
+}
+
+/**
+ * Altera o rótulo ou o teto de uma faixa, reordenando se preciso.
+ *
+ * Mudar um teto pode mudar a ordem, e a ordem é o que o cálculo percorre. Sem
+ * reordenar aqui, uma faixa de 5 kg colocada depois de uma de 10 kg nunca seria
+ * escolhida: a busca para na primeira cujo teto alcança o valor. A linha (ou
+ * coluna) de valores viaja junto com a faixa, senão os números ficariam
+ * apontando para o intervalo errado.
+ */
+export function comFaixaAlterada(
+  tabela: TabelaFrete,
+  eixo: "peso" | "preco",
+  indice: number,
+  campos: { rotulo?: string; ate?: number }
+): TabelaFrete {
+  const atuais = eixoDe(tabela, eixo);
+  const atual = atuais[indice];
+  if (!atual) throw new Error("Faixa não encontrada.");
+
+  const rotulo = (campos.rotulo ?? atual.rotulo).trim();
+  if (!rotulo) throw new Error("A faixa precisa de um nome.");
+
+  // A última não tem teto e não pode ganhar um: ela é quem recolhe o resto.
+  if (atual.ate === null) {
+    if (campos.ate !== undefined) {
+      throw new Error("A última faixa não tem limite — ela recolhe tudo que passar das demais.");
+    }
+    const faixas = atuais.map((f, i) => (i === indice ? { ...f, rotulo } : f));
+    return eixo === "peso"
+      ? { ...tabela, faixasPeso: faixas }
+      : { ...tabela, faixasPreco: faixas };
+  }
+
+  const ate = campos.ate ?? atual.ate;
+  if (!Number.isFinite(ate) || ate <= 0) {
+    throw new Error("O limite da faixa precisa ser maior que zero.");
+  }
+  if (atuais.some((f, i) => i !== indice && f.ate === ate)) {
+    throw new Error("Já existe uma faixa com esse limite.");
+  }
+
+  // Reordena carregando a posição de origem junto, para levar os valores.
+  const comOrigem = atuais.map((f, i) => ({
+    faixa: i === indice ? { rotulo, ate } : f,
+    origem: i,
+  }));
+  comOrigem.sort((a, b) => porTeto(a.faixa, b.faixa));
+
+  const faixas = comOrigem.map((c) => c.faixa);
+  const ordem = comOrigem.map((c) => c.origem);
+
+  if (eixo === "peso") {
+    return {
+      ...tabela,
+      faixasPeso: faixas,
+      valores: ordem.map((i) => tabela.valores[i] ?? []),
+    };
+  }
+
+  return {
+    ...tabela,
+    faixasPreco: faixas,
+    valores: tabela.valores.map((linha) => ordem.map((j) => linha[j] ?? 0)),
+  };
+}
+
+/**
+ * Remove uma faixa. O intervalo dela passa a ser coberto pela faixa seguinte,
+ * que é o que já acontecia antes de ela existir.
+ *
+ * Tirar a última exige promover a anterior a sem-teto: sem isso a tabela
+ * ganharia um limite máximo e produtos acima dele não achariam linha.
+ */
+export function semFaixa(
+  tabela: TabelaFrete,
+  eixo: "peso" | "preco",
+  indice: number
+): TabelaFrete {
+  const atuais = eixoDe(tabela, eixo);
+  if (indice < 0 || indice >= atuais.length) throw new Error("Faixa não encontrada.");
+  if (atuais.length <= 2) throw new Error("A tabela precisa de pelo menos duas faixas.");
+
+  const faixas = atuais.filter((_, i) => i !== indice);
+  // Era a faixa sem teto: quem ficou por último herda o papel de recolher o resto.
+  if (indice === atuais.length - 1) {
+    faixas[faixas.length - 1] = { ...faixas[faixas.length - 1], ate: null };
+  }
+
+  if (eixo === "peso") {
+    return { ...tabela, faixasPeso: faixas, valores: tabela.valores.filter((_, i) => i !== indice) };
+  }
+
+  return {
+    ...tabela,
+    faixasPreco: faixas,
+    valores: tabela.valores.map((linha) => linha.filter((_, j) => j !== indice)),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Cálculo direto: tenho o preço, quero saber o lucro
 // ---------------------------------------------------------------------------
 

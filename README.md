@@ -65,9 +65,18 @@ O **simulador** no topo mostra a regra agindo: informe peso e preço e ele
 destaca na tabela a célula escolhida. Uma matriz de 232 números não explica
 sozinha por que um produto pagou o que pagou.
 
-**Editar faixas** abre os rótulos e os limites. Fica fechado por padrão: mexer
-ali muda em que célula cada produto cai, o que é mais consequente do que
-corrigir um valor.
+**Editar faixas** abre os rótulos e os limites, e permite acrescentar e remover
+faixas nos dois eixos. Fica fechado por padrão: mexer ali muda em que célula
+cada produto cai, o que é mais consequente do que corrigir um valor.
+
+As faixas ficam sempre em ordem crescente de teto, e limites repetidos são
+recusados — a busca percorre a lista e para na primeira faixa que alcança o
+valor, então uma faixa fora de ordem simplesmente nunca seria escolhida.
+
+Uma faixa nova nasce cobrando o que a faixa seguinte já cobrava naquele
+intervalo: é o único padrão que não muda nenhum preço no instante da criação.
+Remover devolve o intervalo para a faixa seguinte, que é o que valia antes de
+ela existir.
 
 ### Precificação
 

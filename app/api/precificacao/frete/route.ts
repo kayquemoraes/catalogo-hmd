@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { temSessao } from "@/lib/auth";
-import { carregarTabelaFrete, salvarFaixa, salvarValorFrete } from "@/lib/precificacaoDb";
+import { comFaixaAdicionada, comFaixaAlterada, semFaixa } from "@/lib/precificacao";
+import {
+  carregarTabelaFrete,
+  salvarTabelaFrete,
+  salvarValorFrete,
+} from "@/lib/precificacaoDb";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +18,11 @@ async function protegido() {
 function falha(erro: unknown, status = 400) {
   const mensagem = erro instanceof Error ? erro.message : String(erro);
   return NextResponse.json({ erro: mensagem }, { status });
+}
+
+function eixoDe(valor: unknown): "peso" | "preco" {
+  if (valor !== "peso" && valor !== "preco") throw new Error("Eixo inválido.");
+  return valor;
 }
 
 /** A matriz inteira: faixas de peso, faixas de preço e os valores. */
@@ -30,8 +40,9 @@ export async function GET() {
 /**
  * Altera uma célula ou uma faixa.
  *
- * As duas coisas moram na mesma rota porque são a mesma tabela vista de dois
- * ângulos, e a tela salva uma de cada vez conforme o campo perde o foco.
+ * A célula é gravada direto, que é o caso comum. A faixa passa pelas funções
+ * puras do motor: mexer num teto pode reordenar o eixo e arrastar linhas ou
+ * colunas junto, e essa regra tem de ser a mesma que o cálculo usa.
  */
 export async function PATCH(req: Request) {
   const barrado = await protegido();
@@ -50,15 +61,18 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    if (corpo.tipo === "faixaPeso" || corpo.tipo === "faixaPreco") {
-      const ordem = Number(corpo.ordem);
-      if (!Number.isInteger(ordem)) throw new Error("Faixa inválida.");
-      await salvarFaixa(corpo.tipo === "faixaPeso" ? "peso" : "preco", ordem, {
+    if (corpo.tipo === "faixa") {
+      const eixo = eixoDe(corpo.eixo);
+      const indice = Number(corpo.indice);
+      if (!Number.isInteger(indice)) throw new Error("Faixa inválida.");
+
+      const atual = await carregarTabelaFrete();
+      const nova = comFaixaAlterada(atual, eixo, indice, {
         rotulo: corpo.rotulo,
-        // `null` é o teto ausente da última faixa; `undefined` é "não mexa".
-        ate: corpo.ate === undefined ? undefined : corpo.ate === null ? null : Number(corpo.ate),
+        ate: corpo.ate === undefined ? undefined : Number(corpo.ate),
       });
-      return NextResponse.json({ ok: true });
+      await salvarTabelaFrete(nova);
+      return NextResponse.json({ ok: true, tabela: nova });
     }
 
     throw new Error("Tipo de alteração desconhecido.");
@@ -67,3 +81,43 @@ export async function PATCH(req: Request) {
   }
 }
 
+/** Acrescenta uma faixa, que entra na posição certa pelo teto. */
+export async function POST(req: Request) {
+  const barrado = await protegido();
+  if (barrado) return barrado;
+
+  try {
+    const corpo = await req.json();
+    const eixo = eixoDe(corpo.eixo);
+
+    const atual = await carregarTabelaFrete();
+    const nova = comFaixaAdicionada(atual, eixo, {
+      rotulo: String(corpo.rotulo ?? ""),
+      ate: Number(corpo.ate),
+    });
+    await salvarTabelaFrete(nova);
+    return NextResponse.json({ ok: true, tabela: nova });
+  } catch (erro) {
+    return falha(erro);
+  }
+}
+
+/** Remove uma faixa; o intervalo dela volta para a faixa seguinte. */
+export async function DELETE(req: Request) {
+  const barrado = await protegido();
+  if (barrado) return barrado;
+
+  try {
+    const corpo = await req.json();
+    const eixo = eixoDe(corpo.eixo);
+    const indice = Number(corpo.indice);
+    if (!Number.isInteger(indice)) throw new Error("Faixa inválida.");
+
+    const atual = await carregarTabelaFrete();
+    const nova = semFaixa(atual, eixo, indice);
+    await salvarTabelaFrete(nova);
+    return NextResponse.json({ ok: true, tabela: nova });
+  } catch (erro) {
+    return falha(erro);
+  }
+}

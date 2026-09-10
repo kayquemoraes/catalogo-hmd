@@ -537,32 +537,52 @@ export async function salvarValorFrete(
 }
 
 /**
- * Rótulo e teto de uma faixa. O teto nulo é da última faixa, que não tem —
- * mexer nele em qualquer outra deixaria um intervalo sem dono.
+ * Regrava a tabela inteira: faixas e valores.
+ *
+ * Acrescentar, remover ou reordenar uma faixa remaneja linhas e colunas — a
+ * posição é o que liga um valor à sua faixa. Atualizar em pedaços exigiria
+ * renumerar posições com a chave estrangeira apontando para elas; apagar e
+ * reescrever dentro de uma transação é mais curto e não deixa estado pela
+ * metade se algo falhar no meio.
  */
-export async function salvarFaixa(
-  eixo: "peso" | "preco",
-  ordem: number,
-  campos: { rotulo?: string; ate?: number | null }
-): Promise<void> {
+export async function salvarTabelaFrete(tabela: TabelaFrete): Promise<void> {
   await ensureSchemaPrecificacao();
 
-  const tabela = eixo === "peso" ? sql`prec_faixas_peso` : sql`prec_faixas_preco`;
-  const [atual] = await sql<{ rotulo: string; ate: string | null }[]>`
-    SELECT rotulo, ate FROM ${tabela} WHERE ordem = ${ordem}
-  `;
-  if (!atual) throw new Error("Faixa não encontrada.");
-
-  const rotulo = (campos.rotulo ?? atual.rotulo).trim();
-  if (!rotulo) throw new Error("A faixa precisa de um nome.");
-
-  const ate =
-    campos.ate === undefined ? (atual.ate === null ? null : Number(atual.ate)) : campos.ate;
-  if (ate !== null && (!Number.isFinite(ate) || ate <= 0)) {
-    throw new Error("O limite da faixa precisa ser maior que zero.");
+  if (tabela.faixasPeso.length < 2 || tabela.faixasPreco.length < 2) {
+    throw new Error("A tabela precisa de pelo menos duas faixas em cada eixo.");
   }
 
-  await sql`UPDATE ${tabela} SET rotulo = ${rotulo}, ate = ${ate} WHERE ordem = ${ordem}`;
+  await sql.begin(async (sql) => {
+    // A remoção das faixas leva os valores junto, pela chave estrangeira.
+    await sql`DELETE FROM prec_faixas_peso`;
+    await sql`DELETE FROM prec_faixas_preco`;
+
+    await sql`
+      INSERT INTO prec_faixas_peso ${sql(
+        tabela.faixasPeso.map((f, i) => ({ ordem: i, rotulo: f.rotulo, ate: f.ate })),
+        "ordem",
+        "rotulo",
+        "ate"
+      )}
+    `;
+    await sql`
+      INSERT INTO prec_faixas_preco ${sql(
+        tabela.faixasPreco.map((f, i) => ({ ordem: i, rotulo: f.rotulo, ate: f.ate })),
+        "ordem",
+        "rotulo",
+        "ate"
+      )}
+    `;
+
+    const valores = tabela.faixasPeso.flatMap((_, i) =>
+      tabela.faixasPreco.map((_, j) => ({
+        peso_ordem: i,
+        preco_ordem: j,
+        valor: tabela.valores[i]?.[j] ?? 0,
+      }))
+    );
+    await sql`INSERT INTO prec_frete ${sql(valores, "peso_ordem", "preco_ordem", "valor")}`;
+  });
 }
 
 export type Situacao = "todos" | "anunciados" | "disponiveis";
