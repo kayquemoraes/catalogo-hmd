@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start -p ${PORT:-3000}"
+    "start": "next start -p ${PORT:-3000}",
+    "verificar": "node --experimental-strip-types --no-warnings scripts/verificar-precificacao.ts"
   },
   "dependencies": {
     "google-auth-library": "^10.4.0",
