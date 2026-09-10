@@ -38,7 +38,15 @@ let pronto: Promise<void> | null = null;
 
 /** Cria e carrega as tabelas do módulo. Seguro para chamar sempre. */
 export function ensureSchemaPrecificacao(): Promise<void> {
-  if (!pronto) pronto = migrar();
+  if (!pronto) {
+    // Guardar a promessa evita repetir o trabalho a cada requisição, mas uma
+    // promessa recusada guardada é pior: o erro se repetiria em toda chamada
+    // seguinte até alguém reiniciar o processo, mesmo já resolvida a causa.
+    pronto = migrar().catch((erro) => {
+      pronto = null;
+      throw erro;
+    });
+  }
   return pronto;
 }
 
@@ -147,40 +155,54 @@ async function migrar() {
  * a planilha tinha — dois lugares dizendo a mesma coisa, um deles desatualizado.
  */
 async function migrarParaValoresPorConta() {
-  await sql.unsafe(`
-    DO $migracao$
-    BEGIN
-      IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'prec_canais' AND column_name = 'antecipacao_ativa'
-      ) THEN
-        UPDATE prec_canais c
-           SET antecipacao = CASE WHEN c.antecipacao_ativa
-                                  THEN coalesce((SELECT p.antecipacao FROM prec_parametros p WHERE p.id = 1), 0)
-                                  ELSE 0 END;
-        ALTER TABLE prec_canais DROP COLUMN antecipacao_ativa;
-      END IF;
+  // CREATE TABLE IF NOT EXISTS não altera tabela que já existe: num banco
+  // criado pela versão anterior as colunas novas não nascem sozinhas e
+  // precisam ser acrescentadas aqui.
+  await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS antecipacao numeric(8,5) NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS embalagem numeric(12,4) NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS promocao numeric(8,5) NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE prec_anuncios ADD COLUMN IF NOT EXISTS promocao numeric(8,5) NOT NULL DEFAULT 0`;
 
-      IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'prec_canais' AND column_name = 'embalagem_ativa'
-      ) THEN
-        UPDATE prec_canais c
-           SET embalagem = CASE WHEN c.embalagem_ativa
-                                THEN coalesce((SELECT p.embalagem FROM prec_parametros p WHERE p.id = 1), 0)
-                                ELSE 0 END;
-        ALTER TABLE prec_canais DROP COLUMN embalagem_ativa;
+  const colunas = await sql<{ column_name: string }[]>`
+    SELECT column_name
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'prec_canais'
+       AND column_name IN ('antecipacao_ativa', 'embalagem_ativa')
+  `;
+  const presentes = new Set(colunas.map((c) => c.column_name));
+  if (presentes.size === 0) return;
 
-        -- A promoção era da conta inteira; passa a ser de cada anúncio,
-        -- herdando o valor que estava valendo até agora.
-        UPDATE prec_anuncios a
-           SET promocao = c.promocao
-          FROM prec_canais c
-         WHERE c.id = a.canal_id;
-      END IF;
-    END
-    $migracao$;
-  `);
+  const [padroes] = await sql<{ antecipacao: string; embalagem: string }[]>`
+    SELECT antecipacao, embalagem FROM prec_parametros WHERE id = 1
+  `;
+  const antecipacaoPadrao = Number(padroes?.antecipacao ?? 0);
+  const embalagemPadrao = Number(padroes?.embalagem ?? 0);
+
+  if (presentes.has("antecipacao_ativa")) {
+    await sql`
+      UPDATE prec_canais
+         SET antecipacao = CASE WHEN antecipacao_ativa THEN ${antecipacaoPadrao}::numeric ELSE 0 END
+    `;
+    await sql`ALTER TABLE prec_canais DROP COLUMN antecipacao_ativa`;
+  }
+
+  if (presentes.has("embalagem_ativa")) {
+    await sql`
+      UPDATE prec_canais
+         SET embalagem = CASE WHEN embalagem_ativa THEN ${embalagemPadrao}::numeric ELSE 0 END
+    `;
+    await sql`ALTER TABLE prec_canais DROP COLUMN embalagem_ativa`;
+
+    // A promoção era da conta inteira; passa a ser de cada anúncio, herdando
+    // o valor que estava valendo até agora.
+    await sql`
+      UPDATE prec_anuncios a
+         SET promocao = c.promocao
+        FROM prec_canais c
+       WHERE c.id = a.canal_id
+    `;
+  }
 }
 
 /**

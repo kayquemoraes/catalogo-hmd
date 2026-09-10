@@ -24,7 +24,15 @@ let ready: Promise<void> | null = null;
 
 /** Cria as tabelas na primeira chamada. Seguro para rodar sempre. */
 export function ensureSchema(): Promise<void> {
-  if (!ready) ready = migrate();
+  if (!ready) {
+    // Uma promessa recusada não pode ficar memorizada: o erro voltaria em
+    // todas as chamadas seguintes, mesmo já resolvida a causa, até o
+    // processo reiniciar.
+    ready = migrate().catch((erro) => {
+      ready = null;
+      throw erro;
+    });
+  }
   return ready;
 }
 
