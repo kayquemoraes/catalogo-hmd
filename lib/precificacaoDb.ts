@@ -565,24 +565,6 @@ export async function salvarFaixa(
   await sql`UPDATE ${tabela} SET rotulo = ${rotulo}, ate = ${ate} WHERE ordem = ${ordem}`;
 }
 
-/**
- * Reajuste da tabela inteira. Transportadora reajusta tudo de uma vez, e
- * corrigir 232 células à mão é onde se erra uma sem notar.
- *
- * O arredondamento é para centavos: a tabela é dinheiro, não fração.
- */
-export async function reajustarFrete(percentual: number): Promise<number> {
-  await ensureSchemaPrecificacao();
-  if (!Number.isFinite(percentual) || percentual <= -100) {
-    throw new Error("Reajuste inválido.");
-  }
-  const fator = 1 + percentual / 100;
-  const alterou = await sql`
-    UPDATE prec_frete SET valor = round(valor * ${fator}::numeric, 2)
-  `;
-  return alterou.count;
-}
-
 export type Situacao = "todos" | "anunciados" | "disponiveis";
 
 /** Recorte por saldo. "Em falta" inclui saldo negativo, que o Bling devolve. */

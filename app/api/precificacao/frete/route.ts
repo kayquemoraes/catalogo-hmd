@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
 import { temSessao } from "@/lib/auth";
-import {
-  carregarTabelaFrete,
-  reajustarFrete,
-  salvarFaixa,
-  salvarValorFrete,
-} from "@/lib/precificacaoDb";
+import { carregarTabelaFrete, salvarFaixa, salvarValorFrete } from "@/lib/precificacaoDb";
 
 export const dynamic = "force-dynamic";
 
@@ -72,23 +67,3 @@ export async function PATCH(req: Request) {
   }
 }
 
-/** Reajuste percentual sobre todos os valores da tabela. */
-export async function POST(req: Request) {
-  const barrado = await protegido();
-  if (barrado) return barrado;
-
-  try {
-    const corpo = await req.json();
-    const percentual = Number(corpo.percentual);
-    if (!Number.isFinite(percentual) || percentual === 0) {
-      throw new Error("Informe um percentual diferente de zero.");
-    }
-    if (Math.abs(percentual) > 100) {
-      throw new Error("Reajuste acima de 100% — confira o valor digitado.");
-    }
-    const celulas = await reajustarFrete(percentual);
-    return NextResponse.json({ ok: true, celulas });
-  } catch (erro) {
-    return falha(erro);
-  }
-}

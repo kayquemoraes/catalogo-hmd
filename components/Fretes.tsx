@@ -10,7 +10,6 @@ export default function Fretes() {
   const [tabela, setTabela] = useState<TabelaFrete | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(0);
   const [editandoFaixas, setEditandoFaixas] = useState(false);
 
@@ -100,29 +99,6 @@ export default function Fretes() {
       };
     });
 
-  const reajustar = async (percentual: number) => {
-    setSalvando((n) => n + 1);
-    try {
-      const r = await fetch("/api/precificacao/frete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ percentual }),
-      });
-      const dados = await r.json();
-      if (!r.ok) throw new Error(dados.erro ?? "Não foi possível reajustar.");
-      setAviso(
-        `${dados.celulas} valores reajustados em ${percentual > 0 ? "+" : ""}` +
-          `${percentual.toLocaleString("pt-BR")}%.`
-      );
-      setErro(null);
-      await carregar();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSalvando((n) => n - 1);
-    }
-  };
-
   // --- tela ----------------------------------------------------------------
 
   return (
@@ -155,30 +131,21 @@ export default function Fretes() {
 
       <div className="mx-auto max-w-[1800px] px-4 py-4 sm:px-6">
         {erro && (
-          <Faixa tom="alert" onFechar={() => setErro(null)}>
+          <Faixa onFechar={() => setErro(null)}>
             {erro}
           </Faixa>
         )}
-        {aviso && (
-          <Faixa tom="signal" onFechar={() => setAviso(null)}>
-            {aviso}
-          </Faixa>
-        )}
-
         {carregando || !tabela ? (
           <p className="text-muted text-sm">Carregando…</p>
         ) : (
           <>
-            <div className="mb-4 grid gap-4 lg:grid-cols-2">
-              <Simulador
-                peso={peso}
-                preco={preco}
-                onPeso={setPeso}
-                onPreco={setPreco}
-                resultado={simulacao}
-              />
-              <Reajuste onAplicar={reajustar} ocupado={salvando > 0} />
-            </div>
+            <Simulador
+              peso={peso}
+              preco={preco}
+              onPeso={setPeso}
+              onPreco={setPreco}
+              resultado={simulacao}
+            />
 
             {editandoFaixas && (
               <EditorDeFaixas tabela={tabela} onSalvar={salvarFaixa} />
@@ -205,19 +172,14 @@ export default function Fretes() {
 // ---------------------------------------------------------------------------
 
 function Faixa({
-  tom,
   children,
   onFechar,
 }: {
-  tom: "alert" | "signal";
   children: React.ReactNode;
   onFechar: () => void;
 }) {
-  const cor = tom === "alert" ? "bg-alert-soft text-alert" : "bg-signal-soft text-signal";
   return (
-    <div
-      className={`${cor} mb-4 flex items-start justify-between gap-4 rounded-[6px] px-4 py-3 text-sm`}
-    >
+    <div className="bg-alert-soft text-alert mb-4 flex items-start justify-between gap-4 rounded-[6px] px-4 py-3 text-sm">
       <span>{children}</span>
       <button onClick={onFechar} className="shrink-0 underline underline-offset-4">
         fechar
@@ -245,10 +207,9 @@ function Simulador({
   resultado: { valor: number; faixaPeso: string; faixaPreco: string } | null;
 }) {
   return (
-    <section className="border-sage bg-paper-raised rounded-[6px] border p-4">
-      <h2 className="text-sm font-semibold">Qual frete este produto paga?</h2>
-
-      <div className="mt-3 flex flex-wrap items-end gap-3">
+    <section className="border-sage bg-paper-raised mb-4 flex flex-wrap items-end justify-between gap-4 rounded-[6px] border p-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <h2 className="mr-2 pb-1.5 text-sm font-semibold">Qual frete este produto paga?</h2>
         <label className="text-sm">
           <span className="text-muted block text-xs">Peso do produto</span>
           <div className="mt-1 flex items-center gap-1.5">
@@ -281,96 +242,15 @@ function Simulador({
       </div>
 
       {resultado ? (
-        <p className="bg-signal-soft text-signal mt-3 rounded-[6px] px-3 py-2 text-sm">
-          <span className="num text-base font-semibold">{moeda.format(resultado.valor)}</span>
+        <p className="bg-signal-soft text-signal rounded-[6px] px-4 py-2 text-sm">
+          <span className="num text-lg font-semibold">{moeda.format(resultado.valor)}</span>
           <span className="ml-2">
-            — {resultado.faixaPeso} × {resultado.faixaPreco}
+            {resultado.faixaPeso} × {resultado.faixaPreco}
           </span>
         </p>
       ) : (
-        <p className="text-muted mt-3 text-sm">
-          Informe os dois valores para ver a célula usada, destacada na tabela abaixo.
-        </p>
-      )}
-    </section>
-  );
-}
-
-/** Reajuste da tabela inteira, que é como a transportadora anuncia mudança. */
-function Reajuste({
-  onAplicar,
-  ocupado,
-}: {
-  onAplicar: (percentual: number) => void | Promise<void>;
-  ocupado: boolean;
-}) {
-  const [texto, setTexto] = useState("");
-  const [confirmando, setConfirmando] = useState(false);
-  const valor = paraNumero(texto);
-  const valido = valor !== null && valor !== 0 && Math.abs(valor) <= 100;
-
-  return (
-    <section className="border-sage bg-paper-raised rounded-[6px] border p-4">
-      <h2 className="text-sm font-semibold">Reajustar a tabela inteira</h2>
-      <p className="text-muted mt-1 text-sm">
-        Multiplica todos os valores de uma vez, arredondando aos centavos. Use negativo para
-        reduzir.
-      </p>
-
-      <div className="mt-3 flex flex-wrap items-end gap-3">
-        <label className="text-sm">
-          <span className="text-muted block text-xs">Percentual</span>
-          <div className="mt-1 flex items-center gap-1.5">
-            <input
-              value={texto}
-              inputMode="decimal"
-              onInput={(e) => apenasNumero(e.currentTarget)}
-              onChange={(e) => {
-                setTexto(e.target.value);
-                setConfirmando(false);
-              }}
-              placeholder="8"
-              className="num border-sage focus:border-signal w-24 rounded-[6px] border px-2 py-1.5 text-right"
-            />
-            <span className="text-muted text-sm">%</span>
-          </div>
-        </label>
-
-        {confirmando ? (
-          <>
-            <button
-              onClick={() => {
-                setConfirmando(false);
-                setTexto("");
-                void onAplicar(valor!);
-              }}
-              disabled={ocupado}
-              className="bg-alert rounded-[6px] px-4 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-40"
-            >
-              Confirmar {valor! > 0 ? "+" : ""}
-              {valor}%
-            </button>
-            <button
-              onClick={() => setConfirmando(false)}
-              className="text-muted text-sm underline underline-offset-4"
-            >
-              cancelar
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={() => setConfirmando(true)}
-            disabled={!valido || ocupado}
-            className="border-sage rounded-[6px] border px-4 py-2 text-sm font-medium hover:bg-sage/40 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Aplicar
-          </button>
-        )}
-      </div>
-
-      {confirmando && (
-        <p className="text-alert mt-2 text-xs">
-          Isso altera os 232 valores de uma vez e não tem desfazer.
+        <p className="text-muted pb-1.5 text-sm">
+          Informe os dois valores para ver a célula usada, destacada na tabela.
         </p>
       )}
     </section>
@@ -488,8 +368,17 @@ function Matriz({
   onSalvar: (linha: number, coluna: number, valor: number) => void | Promise<void>;
 }) {
   return (
-    <div className="border-sage bg-paper-raised max-h-[calc(100vh-24rem)] min-h-[20rem] overflow-auto rounded-[6px] border">
-      <table className="border-collapse text-xs">
+    <div className="border-sage bg-paper-raised max-h-[calc(100vh-20rem)] min-h-[20rem] overflow-auto rounded-[6px] border">
+      {/* `w-full` com `table-fixed`: sem isso a tabela encolhe até a largura do
+          conteúdo e sobra papel em branco à direita. A coluna dos rótulos de
+          peso é a mais larga porque guarda textos como "De 100 a 125 kg". */}
+      <table className="w-full table-fixed border-collapse text-xs">
+        <colgroup>
+          <col className="w-[15%]" />
+          {tabela.faixasPreco.map((_, j) => (
+            <col key={j} style={{ width: `${85 / tabela.faixasPreco.length}%` }} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
             {/* Canto: fixo nos dois eixos, senão cobre os rótulos ao rolar. */}
@@ -549,7 +438,7 @@ function Matriz({
                       onKeyDown={(e) => {
                         if (e.key === "Enter") e.currentTarget.blur();
                       }}
-                      className={`num w-20 rounded-[4px] border px-1 py-1 text-right focus:border-signal ${
+                      className={`num w-full rounded-[4px] border px-1.5 py-1 text-right focus:border-signal ${
                         naCruz ? "border-signal bg-paper-raised font-semibold" : "border-sage"
                       }`}
                     />

@@ -65,10 +65,6 @@ O **simulador** no topo mostra a regra agindo: informe peso e preço e ele
 destaca na tabela a célula escolhida. Uma matriz de 232 números não explica
 sozinha por que um produto pagou o que pagou.
 
-O **reajuste** multiplica a tabela inteira de uma vez, que é como a
-transportadora anuncia mudança — corrigir 232 células à mão é onde se erra uma
-sem notar.
-
 **Editar faixas** abre os rótulos e os limites. Fica fechado por padrão: mexer
 ali muda em que célula cada produto cai, o que é mais consequente do que
 corrigir um valor.
