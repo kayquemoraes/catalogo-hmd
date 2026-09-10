@@ -475,7 +475,7 @@ export default function Precificacao() {
             onMudar={(v) => setBusca((b) => ({ ...b, sku: v }))}
           />
           <CampoDeBusca
-            rotulo="Nome"
+            rotulo="Produto"
             valor={busca.nome}
             onMudar={(v) => setBusca((b) => ({ ...b, nome: v }))}
             largo
