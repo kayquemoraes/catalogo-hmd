@@ -16,8 +16,8 @@ const ITENS: { id: Secao; rotulo: string; href: string }[] = [
  */
 export default function Navegacao({ ativo }: { ativo: Secao }) {
   return (
-    <nav className="bg-ink text-paper border-ink-line border-b">
-      <div className="mx-auto flex max-w-[1600px] items-center gap-8 px-6 sm:px-8">
+    <nav className="bg-ink text-paper border-ink-line sticky top-0 z-40 border-b">
+      <div className="mx-auto flex max-w-[1800px] items-center gap-8 px-4 sm:px-6">
         <Link href="/" className="py-3.5 text-sm font-semibold tracking-tight">
           HMD
         </Link>

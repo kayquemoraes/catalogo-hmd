@@ -154,6 +154,26 @@ export default function Precificacao() {
   const modalidades: Modalidade[] = canal?.tipo === "ml" ? ["classico", "premium"] : ["unico"];
   const semCatalogo = (contexto?.produtosNoCatalogo ?? 0) === 0;
 
+  // O Mercado Livre mostra duas modalidades lado a lado (18 colunas) e a
+  // Shopee só uma (11), então cada caso tem seu reparto. Preço e Margem
+  // recebem as fatias maiores: são o que se lê e o que se digita.
+  const larguras =
+    modalidades.length === 2
+      ? {
+          produto: "13%",
+          custo: "5.5%",
+          peso: "4.5%",
+          acoes: "4%",
+          modalidade: ["4.5%", "4.5%", "7%", "4.5%", "5%", "5%", "6%"],
+        }
+      : {
+          produto: "24%",
+          custo: "8%",
+          peso: "6%",
+          acoes: "6%",
+          modalidade: ["7%", "7%", "11%", "6%", "8%", "8%", "9%"],
+        };
+
   // --- cálculo -------------------------------------------------------------
 
   const calcularAnuncio = useCallback(
@@ -309,7 +329,7 @@ export default function Precificacao() {
   return (
     <main className="min-h-screen">
       <header className="bg-ink text-paper">
-        <div className="mx-auto max-w-[1600px] px-6 py-9 sm:px-8">
+        <div className="mx-auto max-w-[1800px] px-4 py-7 sm:px-6">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Precificação</h1>
@@ -355,7 +375,7 @@ export default function Precificacao() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1600px] px-6 py-8 sm:px-8">
+      <div className="mx-auto max-w-[1800px] px-4 py-6 sm:px-6">
         {semCatalogo && (
           <div className="bg-amber-soft text-amber mb-6 rounded-[6px] px-4 py-3 text-sm">
             O catálogo do Bling ainda não foi lido neste ambiente. Você pode cadastrar preços
@@ -375,7 +395,7 @@ export default function Precificacao() {
         )}
 
         {/* Barra de filtros */}
-        <div className="border-sage bg-paper-raised sticky top-0 z-10 mb-5 flex flex-wrap items-center gap-4 rounded-[6px] border px-4 py-3">
+        <div className="border-sage bg-paper-raised mb-4 flex flex-wrap items-center gap-4 rounded-[6px] border px-4 py-3">
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -417,40 +437,85 @@ export default function Precificacao() {
         </div>
 
         {/* Tabela */}
-        <div className="border-sage bg-paper-raised overflow-x-auto rounded-[6px] border">
-          <table className="w-full border-collapse text-sm">
+        {/* A tabela tem a própria rolagem vertical: assim o cabeçalho gruda
+            dentro dela, sem depender de medir a altura do que vem acima. */}
+        <div className="border-sage bg-paper-raised max-h-[calc(100vh-19rem)] min-h-[18rem] overflow-y-auto rounded-[6px] border">
+          <table className="w-full table-fixed border-collapse text-xs">
+            {/* Larguras fixas em porcentagem: a tabela cabe sempre na largura
+                disponível, em vez de empurrar uma barra de rolagem lateral. */}
+            <colgroup>
+              <col style={{ width: larguras.produto }} />
+              <col style={{ width: larguras.custo }} />
+              <col style={{ width: larguras.peso }} />
+              {modalidades.map((m) => (
+                <Fragment key={m}>
+                  {larguras.modalidade.map((w, i) => (
+                    <col key={i} style={{ width: w }} />
+                  ))}
+                </Fragment>
+              ))}
+              <col style={{ width: larguras.acoes }} />
+            </colgroup>
+
             <thead>
-              <tr className="border-sage bg-sage/30 border-b">
-                <th className="px-4 py-2.5 text-left font-medium">Produto</th>
-                <th className="px-3 py-2.5 text-right font-medium">Custo</th>
-                <th className="px-3 py-2.5 text-right font-medium">Peso</th>
+              <tr>
+                <th className="bg-sage border-sage sticky top-0 z-20 border-b px-3 py-2.5 text-left font-semibold">
+                  Produto
+                </th>
+                <th className="bg-sage border-sage sticky top-0 z-20 border-b px-1 py-2.5 font-semibold">
+                  Custo
+                </th>
+                <th className="bg-sage border-sage sticky top-0 z-20 border-b px-1 py-2.5 font-semibold">
+                  Peso
+                </th>
                 {modalidades.map((m) => (
                   <th
                     key={m}
                     colSpan={7}
-                    className="border-sage border-l px-3 py-2.5 text-center font-medium"
+                    className="bg-sage border-sage sticky top-0 z-20 border-b border-l px-2 py-2.5 font-semibold tracking-wide uppercase"
                   >
                     {ROTULO[m]}
                   </th>
                 ))}
-                <th className="px-3 py-2.5" />
+                <th className="bg-sage border-sage sticky top-0 z-20 border-b" />
               </tr>
-              <tr className="border-sage text-muted border-b text-xs">
-                <th className="px-4 py-2 text-left font-normal">SKU · marca</th>
-                <th className="px-3 py-2 text-right font-normal">R$</th>
-                <th className="px-3 py-2 text-right font-normal">kg</th>
+
+              <tr>
+                <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-3 py-1.5 text-left font-normal">
+                  SKU · marca
+                </th>
+                <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal">
+                  R$
+                </th>
+                <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal">
+                  kg
+                </th>
                 {modalidades.map((m) => (
                   <Fragment key={m}>
-                    <th className="border-sage border-l px-2 py-2 text-right font-normal">% taxa</th>
-                    <th className="px-2 py-2 text-right font-normal">% promo</th>
-                    <th className="px-2 py-2 text-right font-normal">Preço</th>
-                    <th className="px-2 py-2 text-right font-normal">Frete</th>
-                    <th className="px-2 py-2 text-right font-normal">Comissão</th>
-                    <th className="px-2 py-2 text-right font-normal">Lucro</th>
-                    <th className="px-2 py-2 text-right font-normal">Margem</th>
+                    <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b border-l px-1 py-1.5 font-normal">
+                      % taxa
+                    </th>
+                    <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal">
+                      % promo
+                    </th>
+                    <th className="bg-signal-soft border-sage text-signal sticky top-[36px] z-20 border-b px-1 py-1.5 font-semibold">
+                      Preço
+                    </th>
+                    <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal">
+                      Frete
+                    </th>
+                    <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal">
+                      Comissão
+                    </th>
+                    <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal">
+                      Lucro
+                    </th>
+                    <th className="bg-signal-soft border-sage text-signal sticky top-[36px] z-20 border-b px-1 py-1.5 font-semibold">
+                      Margem
+                    </th>
                   </Fragment>
                 ))}
-                <th className="px-3 py-2 font-normal" />
+                <th className="bg-paper-raised border-sage sticky top-[36px] z-20 border-b" />
               </tr>
             </thead>
 
@@ -464,32 +529,29 @@ export default function Precificacao() {
               )}
 
               {linhas.map((linha) => (
-                <tr key={linha.sku} className="border-sage/50 hover:bg-sage/15 border-b">
-                  <td className="px-4 py-2">
-                    <span className="font-medium">{linha.nome}</span>
-                    <span className="text-muted block text-xs">
+                <tr key={linha.sku} className="border-sage/50 hover:bg-sage/15 border-b text-center">
+                  <td className="px-3 py-1.5 text-left">
+                    <span className="block truncate font-medium" title={linha.nome}>
+                      {linha.nome}
+                    </span>
+                    <span className="text-muted block truncate text-[11px]">
                       {linha.sku}
                       {linha.marca ? ` · ${linha.marca}` : ""}
-                      {!linha.temProduto && (
-                        <span className="text-amber"> · fora do catálogo do Bling</span>
-                      )}
+                      {!linha.temProduto && <span className="text-amber"> · fora do catálogo</span>}
                     </span>
                   </td>
-                  <td className="num px-3 py-2 text-right">
+                  <td className="num px-1 py-1.5">
                     {linha.custo > 0 ? moeda.format(linha.custo) : <span className="text-muted">—</span>}
                   </td>
-                  <td className="num text-muted px-3 py-2 text-right">
+                  <td className="num text-muted px-1 py-1.5">
                     {linha.peso > 0 ? linha.peso.toLocaleString("pt-BR") : "—"}
                   </td>
 
                   {linha.anuncios.length === 0 ? (
-                    <td
-                      colSpan={modalidades.length * 7 + 1}
-                      className="border-sage border-l px-3 py-2 text-center"
-                    >
+                    <td colSpan={modalidades.length * 7 + 1} className="border-sage border-l px-2 py-1.5">
                       <button
                         onClick={() => void anunciar(linha.sku)}
-                        className="bg-signal rounded-[6px] px-3 py-1.5 text-xs font-medium text-white hover:brightness-110"
+                        className="bg-signal rounded-[6px] px-3 py-1 text-xs font-medium text-white hover:brightness-110"
                       >
                         Anunciar nesta conta
                       </button>
@@ -503,7 +565,7 @@ export default function Precificacao() {
                             <td
                               key={m}
                               colSpan={7}
-                              className="border-sage text-muted border-l px-3 py-2 text-center text-xs"
+                              className="border-sage text-muted border-l px-2 py-1.5"
                             >
                               sem anúncio
                             </td>
@@ -522,10 +584,11 @@ export default function Precificacao() {
                           />
                         );
                       })}
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-1 py-1.5">
                         <button
                           onClick={() => void remover(linha.sku, linha.nome)}
-                          className="text-muted hover:text-alert text-xs underline underline-offset-4"
+                          title={`Deixar de anunciar ${linha.nome} nesta conta`}
+                          className="text-muted hover:text-alert text-[11px] underline underline-offset-2"
                         >
                           remover
                         </button>
@@ -597,15 +660,24 @@ function Celulas({
   const mostra = resultado && !semPreco;
   const prejuizo = Boolean(mostra && temCusto && resultado!.lucro < 0);
 
+  // Campos secundários: discretos, para não competir com o que importa.
   const campo =
-    "num border-sage rounded-[6px] border px-1.5 py-1 text-right focus:border-signal disabled:cursor-not-allowed disabled:opacity-40";
+    "num border-sage w-full rounded-[4px] border px-1 py-1 text-center focus:border-signal disabled:cursor-not-allowed disabled:opacity-40";
+
+  // Preço e Margem são as duas pontas da decisão — o que se digita e o que se
+  // lê. Ganham fundo próprio, texto maior e peso, para o olho achar a coluna
+  // sem precisar contar cabeçalhos.
+  const destaque =
+    "num border-signal/40 bg-paper-raised w-full rounded-[4px] border px-1 py-1 text-center text-sm font-semibold focus:border-signal disabled:cursor-not-allowed disabled:opacity-40";
+  const celulaDestaque = "bg-signal-soft/60 px-1 py-1.5";
 
   return (
     <>
-      <td className="border-sage border-l px-2 py-2 text-right">
+      <td className="border-sage border-l px-1 py-1.5">
         <input
           type="text"
           inputMode="decimal"
+          title="Percentual cobrado pelo marketplace"
           defaultValue={Number((anuncio.comissao * 100).toFixed(3)).toString()}
           key={`c-${anuncio.anuncioId}-${anuncio.comissao}`}
           onBlur={(e) => {
@@ -615,10 +687,11 @@ function Celulas({
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
           }}
-          className={`${campo} w-16`}
+          className={campo}
         />
       </td>
-      <td className="px-2 py-2 text-right">
+
+      <td className="px-1 py-1.5">
         <input
           type="text"
           inputMode="decimal"
@@ -632,14 +705,16 @@ function Celulas({
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
           }}
-          className={`${campo} w-16 ${anuncio.promocao > 0 ? "border-amber text-amber font-medium" : ""}`}
+          className={`${campo} ${anuncio.promocao > 0 ? "border-amber text-amber font-medium" : ""}`}
         />
       </td>
-      <td className="px-2 py-2 text-right">
+
+      <td className={celulaDestaque}>
         <input
           type="text"
           inputMode="decimal"
           placeholder="—"
+          title="Preço do anúncio"
           defaultValue={anuncio.preco > 0 ? anuncio.preco.toString() : ""}
           key={`p-${anuncio.anuncioId}-${anuncio.preco}`}
           onBlur={(e) => {
@@ -649,19 +724,21 @@ function Celulas({
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
           }}
-          className={`${campo} w-24`}
+          className={destaque}
         />
       </td>
-      <td className="num text-muted px-2 py-2 text-right">
+
+      <td className="num text-muted px-1 py-1.5">
         {mostra ? moeda.format(resultado!.frete) : "—"}
       </td>
-      <td className="num text-muted px-2 py-2 text-right">
+      <td className="num text-muted px-1 py-1.5">
         {mostra ? moeda.format(resultado!.comissao) : "—"}
       </td>
-      <td className={`num px-2 py-2 text-right ${prejuizo ? "text-alert font-medium" : ""}`}>
+      <td className={`num px-1 py-1.5 ${prejuizo ? "text-alert font-medium" : ""}`}>
         {mostra && temCusto ? moeda.format(resultado!.lucro) : "—"}
       </td>
-      <td className="px-2 py-2 text-right">
+
+      <td className={celulaDestaque}>
         <input
           type="text"
           inputMode="decimal"
@@ -681,15 +758,14 @@ function Celulas({
           onBlur={(e) => {
             const n = paraNumero(e.target.value);
             if (n === null) return;
-            const atual =
-              mostra && resultado!.margem !== null ? resultado!.margem * 100 : null;
+            const atual = mostra && resultado!.margem !== null ? resultado!.margem * 100 : null;
             if (atual !== null && Math.abs(n - atual) < 0.05) return;
             onMargem(n / 100);
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
           }}
-          className={`${campo} w-20 ${prejuizo ? "text-alert font-medium" : ""}`}
+          className={`${destaque} ${prejuizo ? "border-alert/50 text-alert" : ""}`}
         />
       </td>
     </>
