@@ -767,13 +767,12 @@ function CartaoResumo({
   const prejuizo = numeros?.prejuizo ?? 0;
 
   return (
+    // O cartão é sempre neutro. Pintá-lo inteiro de vermelho transformava um
+    // dado em alarme e ainda por cima competia com a margem, que é a
+    // informação principal — o aviso vai numa etiqueta, do tamanho do recado.
     <div
-      className={`min-w-[9rem] rounded-[6px] border px-3 py-2 ${
-        prejuizo > 0
-          ? "border-alert/50 bg-alert/15"
-          : destacado
-            ? "border-sage-deep/40 bg-ink-soft"
-            : "border-ink-line bg-ink-soft/60"
+      className={`min-w-[9.5rem] rounded-[6px] border px-3 py-2 ${
+        destacado ? "border-sage-deep/40 bg-ink-soft" : "border-ink-line bg-ink-soft/60"
       }`}
     >
       <p className="text-sage-deep text-[10px] font-medium tracking-wider uppercase">{rotulo}</p>
@@ -782,27 +781,26 @@ function CartaoResumo({
         {carregando ? "…" : semMargem ? "—" : pct(numeros!.margemPonderada!)}
       </p>
 
-      <p className="text-sage-deep mt-1 text-[11px] leading-tight">
-        {carregando
-          ? "carregando…"
-          : semMargem
-            ? numeros && numeros.comPreco > 0
+      {carregando || semMargem ? (
+        <p className="text-sage-deep mt-1.5 text-[11px] leading-tight">
+          {carregando
+            ? "carregando…"
+            : numeros && numeros.comPreco > 0
               ? "sem custo dos produtos"
-              : "sem anúncio com preço"
-            : null}
-        {!carregando && !semMargem && (
-          <>
-            {inteiro.format(numeros!.comMargem)} anúncios ·{" "}
-            {prejuizo > 0 ? (
-              <span className="text-alert-soft font-semibold">
-                {inteiro.format(prejuizo)} no prejuízo
-              </span>
-            ) : (
-              "nenhum no prejuízo"
-            )}
-          </>
-        )}
-      </p>
+              : "sem anúncio com preço"}
+        </p>
+      ) : (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className="text-sage-deep num text-[11px]">
+            {inteiro.format(numeros!.comMargem)} anúncios
+          </span>
+          {prejuizo > 0 && (
+            <span className="bg-amber/25 text-amber-soft num rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
+              {inteiro.format(prejuizo)} no prejuízo
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
