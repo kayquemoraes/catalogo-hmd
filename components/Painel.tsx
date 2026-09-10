@@ -62,7 +62,6 @@ export default function Painel() {
   const [busca, setBusca] = useState("");
   const [aviso, setAviso] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
-  const [enviando, setEnviando] = useState(false);
   const [confirmacao, setConfirmacao] = useState<string | null>(null);
 
   const rodavaAntes = useRef(false);
@@ -130,23 +129,6 @@ export default function Painel() {
     setStatus(await lerStatus());
   };
 
-  const enviarParaPlanilha = async () => {
-    setAviso(null);
-    setConfirmacao(null);
-    setEnviando(true);
-
-    const r = await fetch("/api/sheet", { method: "POST" });
-    const dados = await r.json();
-
-    if (r.ok) {
-      setConfirmacao(`Planilha atualizada com ${inteiro.format(dados.linhas)} produtos.`);
-      setStatus(await lerStatus());
-    } else {
-      setAviso(dados.erro ?? "Não foi possível escrever na planilha.");
-    }
-    setEnviando(false);
-  };
-
   const leitura = status?.leitura;
   const rodando = Boolean(leitura?.rodando);
   const paginas = Math.max(1, Math.ceil(total / 50));
@@ -208,24 +190,13 @@ export default function Painel() {
               )}
 
               {status?.conectado && (
-                <>
-                  <button
-                    onClick={lerCatalogo}
-                    disabled={rodando}
-                    className="bg-signal rounded-[6px] px-4 py-2.5 text-sm font-medium text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {rodando ? "Leitura em andamento" : "Ler catálogo agora"}
-                  </button>
-                  {status.planilha.configurada && (
-                    <button
-                      onClick={enviarParaPlanilha}
-                      disabled={rodando || enviando || !status.total}
-                      className="border-ink-line rounded-[6px] border px-4 py-2.5 text-sm font-medium hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {enviando ? "Escrevendo…" : "Reescrever planilha"}
-                    </button>
-                  )}
-                </>
+                <button
+                  onClick={lerCatalogo}
+                  disabled={rodando}
+                  className="bg-signal rounded-[6px] px-4 py-2.5 text-sm font-medium text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {rodando ? "Leitura em andamento" : "Ler catálogo agora"}
+                </button>
               )}
             </div>
           </div>
