@@ -12,10 +12,10 @@
 
 import { sql, ensureSchema } from "./db";
 import { TABELA_FRETE_INICIAL } from "./freteInicial";
-import type { Canal, Parametros, TabelaFrete, TipoCanal } from "./precificacao";
+import type { ContaSalva, Parametros, TabelaFrete, TipoCanal } from "./precificacao";
 import dados from "./dadosIniciais.json";
 
-export type CanalSalvo = Canal & {
+export type CanalSalvo = ContaSalva & {
   id: number;
   nome: string;
   /** Sugerido aos anúncios novos; o cálculo usa a promoção de cada anúncio. */
@@ -28,6 +28,7 @@ export type EntradaCanal = {
   tipo: TipoCanal;
   imposto: number;
   antecipacao: number;
+  antecipacaoAtiva: boolean;
   embalagem: number;
   promocaoPadrao: number;
 };
@@ -74,6 +75,7 @@ async function migrar() {
       tipo        text NOT NULL CHECK (tipo IN ('ml', 'shopee')),
       imposto     numeric(8,5) NOT NULL DEFAULT 0,
       antecipacao numeric(8,5) NOT NULL DEFAULT 0,
+      antecipacao_ativa boolean NOT NULL DEFAULT true,
       embalagem   numeric(12,4) NOT NULL DEFAULT 0,
       promocao    numeric(8,5) NOT NULL DEFAULT 0,
       ativo       boolean NOT NULL DEFAULT true,
@@ -162,6 +164,17 @@ async function migrarParaValoresPorConta() {
   await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS embalagem numeric(12,4) NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS promocao numeric(8,5) NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE prec_anuncios ADD COLUMN IF NOT EXISTS promocao numeric(8,5) NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS antecipacao_ativa boolean NOT NULL DEFAULT true`;
+
+  // Conta que estava com 0% passa a ter o interruptor desligado e guarda o
+  // percentual padrão: sem isso, religar a antecipação daria 0% e obrigaria a
+  // procurar a alíquota. O valor efetivo não muda — desligado, 0% é 0%.
+  await sql`
+    UPDATE prec_canais c
+       SET antecipacao_ativa = false,
+           antecipacao = coalesce((SELECT p.antecipacao FROM prec_parametros p WHERE p.id = 1), 0)
+     WHERE c.antecipacao = 0 AND c.antecipacao_ativa
+  `;
 
   const colunas = await sql<{ column_name: string }[]>`
     SELECT column_name
@@ -286,12 +299,13 @@ async function carregarDadosIniciais() {
       // Se duas instâncias subirem ao mesmo tempo, uma delas perde a corrida no
       // nome único. Em vez de estourar, ela reaproveita o canal que já existe.
       await sql`
-        INSERT INTO prec_canais (nome, tipo, imposto, antecipacao, embalagem, promocao)
+        INSERT INTO prec_canais (nome, tipo, imposto, antecipacao, antecipacao_ativa, embalagem, promocao)
         VALUES (
           ${canal.nome},
           ${canal.tipo},
           ${canal.imposto},
-          ${canal.antecipacaoAtiva ? dados.parametros.antecipacao : 0},
+          ${dados.parametros.antecipacao},
+          ${canal.antecipacaoAtiva},
           ${canal.embalagemAtiva ? dados.parametros.embalagem : 0},
           ${canal.promocao}
         )
@@ -356,12 +370,13 @@ export async function listarCanais(): Promise<CanalSalvo[]> {
       tipo: TipoCanal;
       imposto: string;
       antecipacao: string;
+      antecipacao_ativa: boolean;
       embalagem: string;
       promocao: string;
       ativo: boolean;
     }[]
   >`
-    SELECT id, nome, tipo, imposto, antecipacao, embalagem, promocao, ativo
+    SELECT id, nome, tipo, imposto, antecipacao, antecipacao_ativa, embalagem, promocao, ativo
       FROM prec_canais
      ORDER BY tipo, nome
   `;
@@ -371,6 +386,7 @@ export async function listarCanais(): Promise<CanalSalvo[]> {
     tipo: l.tipo,
     imposto: Number(l.imposto),
     antecipacao: Number(l.antecipacao),
+    antecipacaoAtiva: l.antecipacao_ativa,
     embalagem: Number(l.embalagem),
     promocaoPadrao: Number(l.promocao),
     ativo: l.ativo,
@@ -380,12 +396,13 @@ export async function listarCanais(): Promise<CanalSalvo[]> {
 export async function criarCanal(entrada: EntradaCanal): Promise<CanalSalvo> {
   await ensureSchemaPrecificacao();
   const [linha] = await sql<{ id: number }[]>`
-    INSERT INTO prec_canais (nome, tipo, imposto, antecipacao, embalagem, promocao)
+    INSERT INTO prec_canais (nome, tipo, imposto, antecipacao, antecipacao_ativa, embalagem, promocao)
     VALUES (
       ${entrada.nome},
       ${entrada.tipo},
       ${entrada.imposto},
       ${entrada.antecipacao},
+      ${entrada.antecipacaoAtiva},
       ${entrada.embalagem},
       ${entrada.promocaoPadrao}
     )
@@ -409,6 +426,7 @@ export async function atualizarCanal(
        SET nome = ${entrada.nome},
            imposto = ${entrada.imposto},
            antecipacao = ${entrada.antecipacao},
+           antecipacao_ativa = ${entrada.antecipacaoAtiva},
            embalagem = ${entrada.embalagem},
            promocao = ${entrada.promocaoPadrao}
      WHERE id = ${id}

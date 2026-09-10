@@ -33,11 +33,13 @@ export type Parametros = {
 };
 
 /**
- * Uma conta de vendedor: mlHmd1, spHmd1, etc.
+ * Uma conta de vendedor, do ponto de vista do cálculo: só números já
+ * resolvidos, sem interruptor nenhum. Zero é o desligado.
  *
- * Os três custos são valores, não interruptores: zero é o desligado. A
- * planilha mantinha um "Sim/Não" ao lado de um percentual guardado noutro
- * lugar, e foi assim que a mlHmd2 acabou tributando 0% sem ninguém notar.
+ * O que a tela oferece como "ligar/desligar antecipação" vive em `ContaSalva`
+ * e chega aqui já traduzido por `comoCanal`. Assim existe um único caminho
+ * entre o que está guardado e o que entra na conta — a planilha tinha dois, e
+ * foi por isso que a mlHmd2 passou a tributar 0% sem ninguém notar.
  */
 export type Canal = {
   tipo: TipoCanal;
@@ -48,6 +50,31 @@ export type Canal = {
   /** Custo de embalagem desta conta, em reais. 0 = não cobra. */
   embalagem: number;
 };
+
+/**
+ * A conta como ela é guardada: a taxa de antecipação convive com um
+ * interruptor, para que desligar a antecipação não apague o percentual e
+ * obrigue a redigitá-lo ao religar.
+ *
+ * O cálculo nunca vê esse interruptor — recebe sempre a taxa já resolvida por
+ * `comoCanal`. Era exatamente a convivência de um "Sim/Não" com um percentual
+ * guardado noutro lugar que fazia a planilha divergir de si mesma; aqui os dois
+ * vivem na mesma linha e só existe um caminho entre eles.
+ */
+export type ContaSalva = Omit<Canal, "antecipacao"> & {
+  antecipacao: number;
+  antecipacaoAtiva: boolean;
+};
+
+/** Resolve a conta guardada no canal que o cálculo entende. */
+export function comoCanal(conta: ContaSalva): Canal {
+  return {
+    tipo: conta.tipo,
+    imposto: conta.imposto,
+    embalagem: conta.embalagem,
+    antecipacao: conta.antecipacaoAtiva ? conta.antecipacao : 0,
+  };
+}
 
 /** O que é específico de um anúncio: comissão, preço e promoção. */
 export type Anuncio = {

@@ -67,6 +67,7 @@ export async function POST(req: Request) {
       tipo: corpo.tipo as TipoCanal,
       imposto: fracao(corpo.imposto, "Imposto"),
       antecipacao: fracao(corpo.antecipacao, "Antecipação"),
+      antecipacaoAtiva: corpo.antecipacaoAtiva !== false,
       embalagem: reais(corpo.embalagem, "Embalagem"),
       promocaoPadrao: fracao(corpo.promocaoPadrao, "Promoção padrão"),
     });
@@ -97,6 +98,7 @@ export async function PATCH(req: Request) {
       nome,
       imposto: fracao(corpo.imposto, "Imposto"),
       antecipacao: fracao(corpo.antecipacao, "Antecipação"),
+      antecipacaoAtiva: Boolean(corpo.antecipacaoAtiva),
       embalagem: reais(corpo.embalagem, "Embalagem"),
       promocaoPadrao: fracao(corpo.promocaoPadrao, "Promoção padrão"),
     });

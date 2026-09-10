@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { temSessao } from "@/lib/auth";
-import { calcular } from "@/lib/precificacao";
+import { calcular, comoCanal } from "@/lib/precificacao";
 import { carregarTabelaFrete, listarCanais, listarLinhas } from "@/lib/precificacaoDb";
 import { filtrosDaUrl } from "@/lib/filtros";
 
@@ -34,8 +34,9 @@ export async function GET(req: Request) {
     if (!canalId) throw new Error("Informe o canal.");
 
     const canais = await listarCanais();
-    const canal = canais.find((c) => c.id === canalId);
-    if (!canal) throw new Error("Conta não encontrada.");
+    const conta = canais.find((c) => c.id === canalId);
+    if (!conta) throw new Error("Conta não encontrada.");
+    const canal = comoCanal(conta);
 
     const [tabela, { linhas, total }] = await Promise.all([
       carregarTabelaFrete(),

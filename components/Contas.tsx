@@ -10,6 +10,7 @@ type Conta = {
   tipo: TipoCanal;
   imposto: number;
   antecipacao: number;
+  antecipacaoAtiva: boolean;
   embalagem: number;
   promocaoPadrao: number;
   ativo: boolean;
@@ -30,6 +31,7 @@ function mudou(a: Conta, b: Conta): boolean {
     a.nome !== b.nome ||
     a.imposto !== b.imposto ||
     a.antecipacao !== b.antecipacao ||
+    a.antecipacaoAtiva !== b.antecipacaoAtiva ||
     a.embalagem !== b.embalagem ||
     a.promocaoPadrao !== b.promocaoPadrao
   );
@@ -83,6 +85,7 @@ export default function Contas() {
           nome: conta.nome,
           imposto: conta.imposto,
           antecipacao: conta.antecipacao,
+          antecipacaoAtiva: conta.antecipacaoAtiva,
           embalagem: conta.embalagem,
           promocaoPadrao: conta.promocaoPadrao,
         }),
@@ -153,8 +156,9 @@ export default function Contas() {
         )}
 
         <p className="text-muted mb-6 text-sm">
-          <strong>Zero significa desligado.</strong> Uma conta que não antecipa recebíveis fica
-          com antecipação 0%; uma que não cobra embalagem fica com R$ 0,00.
+          A <strong>antecipação</strong> tem interruptor próprio: desligá-la guarda o
+          percentual para quando você religar. Já o <strong>imposto</strong> e a{" "}
+          <strong>embalagem</strong> são só valores — zero é o desligado.
         </p>
 
         {carregando ? (
@@ -207,13 +211,27 @@ export default function Contas() {
                       valor={conta.imposto * 100}
                       onMudar={(n) => alterar(conta.id, { imposto: n / 100 })}
                     />
-                    <Campo
-                      rotulo="Antecipação"
-                      sufixo="%"
-                      ajuda="Taxa para receber antes do prazo"
-                      valor={conta.antecipacao * 100}
-                      onMudar={(n) => alterar(conta.id, { antecipacao: n / 100 })}
-                    />
+                    <div>
+                      <Campo
+                        rotulo="Antecipação"
+                        sufixo="%"
+                        ajuda="Taxa para receber antes do prazo"
+                        valor={conta.antecipacao * 100}
+                        onMudar={(n) => alterar(conta.id, { antecipacao: n / 100 })}
+                      />
+                      <label className="mt-1.5 flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={conta.antecipacaoAtiva}
+                          onChange={(e) =>
+                            alterar(conta.id, { antecipacaoAtiva: e.target.checked })
+                          }
+                        />
+                        <span className={conta.antecipacaoAtiva ? "" : "text-muted"}>
+                          {conta.antecipacaoAtiva ? "Cobrando" : "Desligada"}
+                        </span>
+                      </label>
+                    </div>
                     <Campo
                       rotulo="Embalagem"
                       prefixo="R$"
@@ -387,7 +405,8 @@ function FormularioNovaConta({
           nome: nome.trim(),
           tipo,
           imposto: padroes?.imposto ?? 0,
-          antecipacao: 0,
+          antecipacao: padroes?.antecipacao ?? 0,
+          antecipacaoAtiva: false,
           embalagem: padroes?.embalagem ?? 0,
           promocaoPadrao: 0,
         }),

@@ -10,6 +10,7 @@
 
 import {
   calcular,
+  comoCanal,
   precoParaMargem,
   type Canal,
   type Produto,
@@ -365,6 +366,43 @@ for (const [texto, esperado] of idaEVolta) {
   if (!ok) falhas++;
   console.log(`  ${ok ? "✓" : "✗"} escreve "${texto}" e lê de volta ${volta}`);
 }
+
+// --- Interruptor da antecipação ---------------------------------------------
+// Desligar precisa zerar a taxa no cálculo sem apagar o percentual guardado,
+// senão religar obrigaria a redigitá-lo — e um erro aqui muda todos os lucros
+// da conta sem aviso.
+const GUARDADA = { tipo: "ml" as const, imposto: 0.1, embalagem: 1.5, antecipacao: 0.038 };
+
+const ligada = comoCanal({ ...GUARDADA, antecipacaoAtiva: true });
+const desligada = comoCanal({ ...GUARDADA, antecipacaoAtiva: false });
+
+const okLigada = ligada.antecipacao === 0.038;
+const okDesligada = desligada.antecipacao === 0;
+if (!okLigada) falhas++;
+if (!okDesligada) falhas++;
+console.log(`  ${okLigada ? "✓" : "✗"} ligada usa a taxa guardada: ${ligada.antecipacao}`);
+console.log(`  ${okDesligada ? "✓" : "✗"} desligada zera no cálculo: ${desligada.antecipacao}`);
+
+const comAntecipacao = calcular(
+  { custo: 24.8, peso: 0.2 },
+  ligada,
+  { comissao: 0.14, taxaFixa: 2, preco: 40, promocao: 0 },
+  FRETE
+);
+const semAntecipacao = calcular(
+  { custo: 24.8, peso: 0.2 },
+  desligada,
+  { comissao: 0.14, taxaFixa: 2, preco: 40, promocao: 0 },
+  FRETE
+);
+// A diferença é a antecipação sobre a sobra: 3,8% de 25,85.
+const diferenca = semAntecipacao.lucro - comAntecipacao.lucro;
+const okDiferenca = Math.abs(diferenca - comAntecipacao.sobra * 0.038) < 1e-9;
+if (!okDiferenca) falhas++;
+console.log(
+  `  ${okDiferenca ? "✓" : "✗"} desligar devolve ao lucro exatamente a antecipação` +
+    ` (R$ ${diferenca.toFixed(4)})`
+);
 
 const DIGITACAO: [string, string][] = [
   ["abc", ""],

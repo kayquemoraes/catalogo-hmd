@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   calcular,
+  comoCanal,
   precoParaMargem,
   type Resultado,
   type TabelaFrete,
@@ -16,6 +17,7 @@ type CanalSalvo = {
   tipo: TipoCanal;
   imposto: number;
   antecipacao: number;
+  antecipacaoAtiva: boolean;
   embalagem: number;
   promocaoPadrao: number;
   ativo: boolean;
@@ -248,7 +250,7 @@ export default function Precificacao() {
       if (!contexto || !canal) return null;
       return calcular(
         { custo: linha.custo, peso: linha.peso },
-        canal,
+        comoCanal(canal),
         {
           comissao: anuncio.comissao,
           taxaFixa: anuncio.taxaFixa,
@@ -304,7 +306,7 @@ export default function Precificacao() {
       }
       const sugerido = precoParaMargem(
         { custo: linha.custo, peso: linha.peso },
-        canal,
+        comoCanal(canal),
         { comissao: anuncio.comissao, taxaFixa: anuncio.taxaFixa, promocao: anuncio.promocao },
         contexto.tabelaFrete,
         margemAlvo
@@ -327,6 +329,47 @@ export default function Precificacao() {
     },
     [contexto, canal, aplicar]
   );
+
+  /**
+   * Liga e desliga a antecipação sem sair da tela. Vale para a conta inteira,
+   * como qualquer outro custo dela — a diferença é só estar à mão aqui, onde
+   * se vê o efeito na margem na mesma hora.
+   */
+  const alternarAntecipacao = useCallback(async () => {
+    if (!canal) return;
+    const novo = { ...canal, antecipacaoAtiva: !canal.antecipacaoAtiva };
+    setContexto((antes) =>
+      antes ? { ...antes, canais: antes.canais.map((c) => (c.id === novo.id ? novo : c)) } : antes
+    );
+
+    setSalvando((n) => n + 1);
+    try {
+      const r = await fetch("/api/precificacao/canais", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: novo.id,
+          nome: novo.nome,
+          imposto: novo.imposto,
+          antecipacao: novo.antecipacao,
+          antecipacaoAtiva: novo.antecipacaoAtiva,
+          embalagem: novo.embalagem,
+          promocaoPadrao: novo.promocaoPadrao,
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).erro ?? "Não foi possível salvar.");
+      setErro(null);
+      void buscarResumo();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+      // Devolve o interruptor ao estado que o servidor conhece.
+      setContexto((antes) =>
+        antes ? { ...antes, canais: antes.canais.map((c) => (c.id === canal.id ? canal : c)) } : antes
+      );
+    } finally {
+      setSalvando((n) => n - 1);
+    }
+  }, [canal, buscarResumo]);
 
   const anunciar = useCallback(
     async (sku: string) => {
@@ -399,7 +442,29 @@ export default function Precificacao() {
                     </span>
                   </div>
                   <DadoDaConta rotulo="Imposto" valor={pct(canal.imposto)} />
-                  <DadoDaConta rotulo="Antecipação" valor={pct(canal.antecipacao)} />
+                  <div className="flex items-baseline gap-1.5">
+                    <dt className="text-sage-deep text-[11px] tracking-wide uppercase">
+                      Antecipação
+                    </dt>
+                    <dd>
+                      <button
+                        onClick={() => void alternarAntecipacao()}
+                        aria-pressed={canal.antecipacaoAtiva}
+                        title={
+                          canal.antecipacaoAtiva
+                            ? `Desligar a antecipação de ${pct(canal.antecipacao)} nesta conta`
+                            : `Ligar a antecipação de ${pct(canal.antecipacao)} nesta conta`
+                        }
+                        className={`num rounded-full border px-2 py-0.5 text-sm font-medium transition-colors ${
+                          canal.antecipacaoAtiva
+                            ? "border-signal/60 bg-signal/25 text-paper"
+                            : "border-ink-line text-sage-deep hover:text-paper line-through"
+                        }`}
+                      >
+                        {pct(canal.antecipacao)}
+                      </button>
+                    </dd>
+                  </div>
                   <DadoDaConta rotulo="Embalagem" valor={moeda.format(canal.embalagem)} />
                 </dl>
               ) : (
