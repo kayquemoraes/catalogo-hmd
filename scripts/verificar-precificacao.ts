@@ -12,34 +12,29 @@ import {
   calcular,
   precoParaMargem,
   type Canal,
-  type Parametros,
   type Produto,
 } from "../lib/precificacao.ts";
 import { TABELA_FRETE_INICIAL as FRETE } from "../lib/freteInicial.ts";
 
-const PARAMETROS: Parametros = { imposto: 0.1, antecipacao: 0.038, embalagem: 1.5 };
-
 const ML: Canal = {
   tipo: "ml",
-  imposto: 0.1,
-  antecipacaoAtiva: false, // mlHmd1!A6 = "Não"
-  embalagemAtiva: true, // mlHmd1!C6 = "Sim"
-  promocao: 0, // mlHmd1!B6 = 0
+  imposto: 0.1, // custo!B3
+  antecipacao: 0, // mlHmd1!A6 = "Não"
+  embalagem: 1.5, // mlHmd1!C6 = "Sim" -> custo!B7
 };
 
 const SHOPEE: Canal = {
   tipo: "shopee",
   imposto: 0.1,
-  antecipacaoAtiva: true, // spHmd1!A6 = "Sim"
-  embalagemAtiva: true,
-  promocao: 0,
+  antecipacao: 0.038, // spHmd1!A6 = "Sim" -> custo!B5
+  embalagem: 1.5,
 };
 
 type Caso = {
   nome: string;
   produto: Produto;
   canal: Canal;
-  anuncio: { comissao: number; taxaFixa: number; preco: number };
+  anuncio: { comissao: number; taxaFixa: number; preco: number; promocao: number };
   esperado: {
     custoFinal: number;
     frete: number;
@@ -55,7 +50,7 @@ const CASOS: Caso[] = [
     nome: "mlHmd1 L10 CLÁSSICO — Conversor x3",
     produto: { custo: 9.9675, peso: 0.2 },
     canal: ML,
-    anuncio: { comissao: 0.11, taxaFixa: 0, preco: 32 },
+    anuncio: { comissao: 0.11, taxaFixa: 0, preco: 32, promocao: 0 },
     esperado: {
       custoFinal: 14.6675,
       frete: 6.55,
@@ -69,7 +64,7 @@ const CASOS: Caso[] = [
     nome: "mlHmd1 L10 PREMIUM — Conversor x3",
     produto: { custo: 9.9675, peso: 0.2 },
     canal: ML,
-    anuncio: { comissao: 0.16, taxaFixa: 0, preco: 35 },
+    anuncio: { comissao: 0.16, taxaFixa: 0, preco: 35, promocao: 0 },
     esperado: {
       custoFinal: 14.9675,
       frete: 6.55,
@@ -83,7 +78,7 @@ const CASOS: Caso[] = [
     nome: "mlHmd1 L11 CLÁSSICO — Remote",
     produto: { custo: 24.8, peso: 0.2 },
     canal: ML,
-    anuncio: { comissao: 0.1, taxaFixa: 0, preco: 43 },
+    anuncio: { comissao: 0.1, taxaFixa: 0, preco: 43, promocao: 0 },
     esperado: {
       custoFinal: 30.6,
       frete: 6.55,
@@ -97,7 +92,7 @@ const CASOS: Caso[] = [
     nome: "mlHmd1 L12 CLÁSSICO — VOLT USB (faixa R$ 49 a 78,99)",
     produto: { custo: 33.822, peso: 0.2 },
     canal: ML,
-    anuncio: { comissao: 0.1, taxaFixa: 0, preco: 61 },
+    anuncio: { comissao: 0.1, taxaFixa: 0, preco: 61, promocao: 0 },
     esperado: {
       custoFinal: 41.422,
       frete: 7.75,
@@ -111,7 +106,7 @@ const CASOS: Caso[] = [
     nome: "mlHmd1 L14 CLÁSSICO — 2 Nanoblack (faixa R$ 79 a 99,99)",
     produto: { custo: 44, peso: 0.2 },
     canal: ML,
-    anuncio: { comissao: 0.1, taxaFixa: 0, preco: 96 },
+    anuncio: { comissao: 0.1, taxaFixa: 0, preco: 96, promocao: 0 },
     esperado: {
       custoFinal: 55.1,
       frete: 12.35,
@@ -127,7 +122,7 @@ const CASOS: Caso[] = [
     nome: "mlHmd1 L14 PREMIUM — 2 Nanoblack (faixa própria, R$ 100 a 119,99)",
     produto: { custo: 44, peso: 0.2 },
     canal: ML,
-    anuncio: { comissao: 0.15, taxaFixa: 0, preco: 103 },
+    anuncio: { comissao: 0.15, taxaFixa: 0, preco: 103, promocao: 0 },
     esperado: {
       custoFinal: 55.8,
       frete: 14.35,
@@ -141,7 +136,7 @@ const CASOS: Caso[] = [
     nome: "spHmd1 L11 — Remote (sem frete, taxa fixa R$ 2, com antecipação)",
     produto: { custo: 24.8, peso: 0.2 },
     canal: SHOPEE,
-    anuncio: { comissao: 0.14, taxaFixa: 2, preco: 40 },
+    anuncio: { comissao: 0.14, taxaFixa: 2, preco: 40, promocao: 0 },
     esperado: {
       custoFinal: 30.3,
       frete: 0,
@@ -149,6 +144,26 @@ const CASOS: Caso[] = [
       sobra: 32.4,
       lucro: 0.8688,
       margem: 0.03503225806,
+    },
+  },
+  {
+    // A planilha tinha promoção zerada em todas as abas, então esta parte da
+    // fórmula nunca chegou a ser exercida por lá. Conferido na mão:
+    //   custoFinal = 30 + 10%*100 + 1,50            = 41,50
+    //   comissão   = 11% * (100 - 10%*100)          =  9,90
+    //   sobra      = 100 - 9,90 - 14,35 - 10        = 65,75
+    //   lucro      = 65,75 - 41,50                  = 24,25
+    nome: "Promoção de 10% (conferido à mão, não vem da planilha)",
+    produto: { custo: 30, peso: 0.2 },
+    canal: ML,
+    anuncio: { comissao: 0.11, taxaFixa: 0, preco: 100, promocao: 0.1 },
+    esperado: {
+      custoFinal: 41.5,
+      frete: 14.35,
+      comissao: 9.9,
+      sobra: 65.75,
+      lucro: 24.25,
+      margem: 0.8083333333333333,
     },
   },
 ];
@@ -169,7 +184,7 @@ function conferir(nome: string, obtido: number, esperado: number) {
 console.log("=== Motor de precificação vs. planilha original ===\n");
 
 for (const caso of CASOS) {
-  const r = calcular(caso.produto, caso.canal, caso.anuncio, PARAMETROS, FRETE);
+  const r = calcular(caso.produto, caso.canal, caso.anuncio, FRETE);
   const antes = falhas;
 
   conferir("custoFinal", r.custoFinal, caso.esperado.custoFinal);
@@ -186,12 +201,11 @@ for (const caso of CASOS) {
 console.log("\n=== Cálculo inverso (margem alvo -> preço) ===\n");
 
 for (const caso of CASOS) {
-  const { comissao, taxaFixa } = caso.anuncio;
+  const { comissao, taxaFixa, promocao } = caso.anuncio;
   const sugerido = precoParaMargem(
     caso.produto,
     caso.canal,
-    { comissao, taxaFixa },
-    PARAMETROS,
+    { comissao, taxaFixa, promocao },
     FRETE,
     caso.esperado.margem
   );
@@ -202,12 +216,23 @@ for (const caso of CASOS) {
     continue;
   }
 
-  const diferenca = Math.abs(sugerido.preco - caso.anuncio.preco);
-  const ok = diferenca < 1e-6 && !sugerido.aproximado;
+  const conferido = calcular(
+    caso.produto,
+    caso.canal,
+    { comissao, taxaFixa, promocao, preco: sugerido.preco },
+    FRETE
+  );
+  const margemObtida = conferido.margem ?? NaN;
+  const ok = Math.abs(margemObtida - caso.esperado.margem) < 1e-6 && !sugerido.aproximado;
   if (!ok) falhas++;
+
+  const outroPreco = Math.abs(sugerido.preco - caso.anuncio.preco) > 0.005;
   console.log(
     `  ${ok ? "✓" : "✗"} ${caso.nome}: margem ${(caso.esperado.margem * 100).toFixed(2)}%` +
-      ` -> R$ ${sugerido.preco.toFixed(4)} (anúncio real R$ ${caso.anuncio.preco})` +
+      ` -> R$ ${sugerido.preco.toFixed(2)}` +
+      (outroPreco
+        ? ` (mais barato que os R$ ${caso.anuncio.preco} cadastrados, mesma margem)`
+        : "") +
       (sugerido.aproximado ? " [aproximado]" : "")
   );
 }
@@ -218,8 +243,7 @@ console.log("\n=== Casos de borda ===\n");
 const pesado = calcular(
   { custo: 500, peso: 200 },
   ML,
-  { comissao: 0.11, taxaFixa: 0, preco: 900 },
-  PARAMETROS,
+  { comissao: 0.11, taxaFixa: 0, preco: 900, promocao: 0 },
   FRETE
 );
 const okPesado = pesado.frete === 261.95 && pesado.faixaPeso === "Mais de 150 kg";
@@ -231,9 +255,8 @@ console.log(
 
 const impossivel = precoParaMargem(
   { custo: 10, peso: 0.2 },
-  { ...ML, imposto: 0.5, promocao: 0.3 },
-  { comissao: 0.6, taxaFixa: 0 },
-  PARAMETROS,
+  { ...ML, imposto: 0.5 },
+  { comissao: 0.6, taxaFixa: 0, promocao: 0.3 },
   FRETE,
   2
 );
@@ -246,8 +269,7 @@ console.log(
 const semCusto = calcular(
   { custo: 0, peso: 0.2 },
   ML,
-  { comissao: 0.11, taxaFixa: 0, preco: 50 },
-  PARAMETROS,
+  { comissao: 0.11, taxaFixa: 0, preco: 50, promocao: 0 },
   FRETE
 );
 const okSemCusto = semCusto.margem === null;

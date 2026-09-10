@@ -2,44 +2,37 @@ import { NextResponse } from "next/server";
 import { temSessao } from "@/lib/auth";
 import {
   carregarTabelaFrete,
-  listarAnuncios,
   listarCanais,
   lerParametros,
+  totalDoCatalogo,
 } from "@/lib/precificacaoDb";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Entrega de uma vez tudo que a tela precisa para calcular sozinha:
- * parâmetros, canais, tabela de frete e os anúncios do canal escolhido.
- *
- * O cálculo acontece no navegador para o número mudar junto com a digitação,
- * como numa planilha. O servidor só entra de novo na hora de salvar.
+ * O que a tela precisa saber uma única vez: parâmetros, canais e a tabela de
+ * frete. Com isso em mãos o navegador calcula sozinho, e o número acompanha a
+ * digitação como numa planilha. As linhas vêm à parte, paginadas, em /linhas.
  */
-export async function GET(req: Request) {
+export async function GET() {
   if (!(await temSessao())) {
     return NextResponse.json({ erro: "Sem sessão." }, { status: 401 });
   }
 
   try {
-    const { searchParams } = new URL(req.url);
-    const canais = await listarCanais();
-
-    const pedido = Number(searchParams.get("canal"));
-    const canal = canais.find((c) => c.id === pedido) ?? canais[0] ?? null;
-
-    const [parametros, tabelaFrete, anuncios] = await Promise.all([
+    const [canais, parametros, tabelaFrete, produtosNoCatalogo] = await Promise.all([
+      listarCanais(),
       lerParametros(),
       carregarTabelaFrete(),
-      canal ? listarAnuncios(canal.id) : Promise.resolve([]),
+      totalDoCatalogo(),
     ]);
 
     return NextResponse.json({
       parametros,
       canais,
-      canalAtual: canal?.id ?? null,
+      canalAtual: canais[0]?.id ?? null,
       tabelaFrete,
-      anuncios,
+      produtosNoCatalogo,
     });
   } catch (erro) {
     const mensagem = erro instanceof Error ? erro.message : String(erro);

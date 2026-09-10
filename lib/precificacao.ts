@@ -19,7 +19,10 @@
 
 export type TipoCanal = "ml" | "shopee";
 
-/** Parâmetros gerais da operação — a aba `custo`, linhas 1 a 7. */
+/**
+ * Valores sugeridos ao criar uma conta nova. Depois que a conta existe, quem
+ * manda é ela: cada uma guarda os próprios números.
+ */
 export type Parametros = {
   /** Alíquota sobre o preço de venda, ex.: 0.1 para 10%. */
   imposto: number;
@@ -29,24 +32,32 @@ export type Parametros = {
   embalagem: number;
 };
 
-/** Uma conta de vendedor: mlHmd1, spHmd1, etc. */
+/**
+ * Uma conta de vendedor: mlHmd1, spHmd1, etc.
+ *
+ * Os três custos são valores, não interruptores: zero é o desligado. A
+ * planilha mantinha um "Sim/Não" ao lado de um percentual guardado noutro
+ * lugar, e foi assim que a mlHmd2 acabou tributando 0% sem ninguém notar.
+ */
 export type Canal = {
   tipo: TipoCanal;
-  /** Alíquota própria do canal. Contas com CNPJ diferente tributam diferente. */
+  /** Alíquota própria da conta. CNPJ diferente tributa diferente. */
   imposto: number;
-  antecipacaoAtiva: boolean;
-  embalagemAtiva: boolean;
-  /** Desconto de promoção sobre o preço, ex.: 0.05 para 5%. */
-  promocao: number;
+  /** Antecipação de recebíveis desta conta. 0 = não antecipa. */
+  antecipacao: number;
+  /** Custo de embalagem desta conta, em reais. 0 = não cobra. */
+  embalagem: number;
 };
 
-/** O que é específico de um anúncio: sua comissão e seu preço. */
+/** O que é específico de um anúncio: comissão, preço e promoção. */
 export type Anuncio = {
   /** Percentual cobrado pelo marketplace, ex.: 0.11 (Clássico) ou 0.16 (Premium). */
   comissao: number;
   /** Valor fixo somado à comissão. No Mercado Livre costuma ser 0; na Shopee, 2. */
   taxaFixa: number;
   preco: number;
+  /** Desconto promocional deste anúncio, ex.: 0.05 para 5%. */
+  promocao: number;
 };
 
 export type Produto = {
@@ -134,32 +145,28 @@ export function buscarFrete(
  * Fração do preço que sobra depois da comissão percentual e do desconto de
  * promoção. Aparece nas duas direções do cálculo, por isso vive sozinha.
  */
-function fatorLiquido(anuncio: Anuncio, promocao: number): number {
-  return 1 - anuncio.comissao * (1 - promocao) - promocao;
+function fatorLiquido(comissao: number, promocao: number): number {
+  return 1 - comissao * (1 - promocao) - promocao;
 }
 
 export function calcular(
   produto: Produto,
   canal: Canal,
   anuncio: Anuncio,
-  parametros: Parametros,
   tabela: TabelaFrete | null
 ): Resultado {
   const preco = anuncio.preco;
-  const promocao = canal.promocao;
+  const promocao = anuncio.promocao;
 
   const frete =
     canal.tipo === "ml" && tabela
       ? buscarFrete(tabela, produto.peso, preco)
       : { valor: 0, faixaPeso: "", faixaPreco: "" };
 
-  const embalagem = canal.embalagemAtiva ? parametros.embalagem : 0;
-  const antecipacao = canal.antecipacaoAtiva ? parametros.antecipacao : 0;
-
-  const custoFinal = produto.custo + canal.imposto * preco + embalagem;
+  const custoFinal = produto.custo + canal.imposto * preco + canal.embalagem;
   const comissao = anuncio.comissao * (preco - preco * promocao) + anuncio.taxaFixa;
   const sobra = preco - comissao - frete.valor - promocao * preco;
-  const lucro = sobra - sobra * antecipacao - custoFinal;
+  const lucro = sobra - sobra * canal.antecipacao - custoFinal;
 
   return {
     custoFinal,
@@ -206,13 +213,12 @@ export function precoParaMargem(
   produto: Produto,
   canal: Canal,
   anuncio: Omit<Anuncio, "preco">,
-  parametros: Parametros,
   tabela: TabelaFrete | null,
   margemAlvo: number
 ): PrecoSugerido | null {
-  const embalagem = canal.embalagemAtiva ? parametros.embalagem : 0;
-  const antecipacao = canal.antecipacaoAtiva ? parametros.antecipacao : 0;
-  const k = fatorLiquido({ ...anuncio, preco: 0 }, canal.promocao);
+  const embalagem = canal.embalagem;
+  const antecipacao = canal.antecipacao;
+  const k = fatorLiquido(anuncio.comissao, anuncio.promocao);
 
   const denominador = k * (1 - antecipacao) - canal.imposto;
   // Comissão, promoção e imposto consomem tudo que entra: não existe preço
@@ -227,7 +233,7 @@ export function precoParaMargem(
 
   const monta = (preco: number, aproximado: boolean): PrecoSugerido => ({
     preco,
-    resultado: calcular(produto, canal, { ...anuncio, preco }, parametros, tabela),
+    resultado: calcular(produto, canal, { ...anuncio, preco }, tabela),
     aproximado,
   });
 

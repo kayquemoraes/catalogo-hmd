@@ -18,20 +18,21 @@ import dados from "./dadosIniciais.json";
 export type CanalSalvo = Canal & {
   id: number;
   nome: string;
+  /** Sugerido aos anúncios novos; o cálculo usa a promoção de cada anúncio. */
+  promocaoPadrao: number;
   ativo: boolean;
 };
 
-export type Modalidade = "classico" | "premium" | "unico";
-
-export type AnuncioSalvo = {
-  id: number;
-  canalId: number;
-  sku: string;
-  modalidade: Modalidade;
-  comissao: number;
-  taxaFixa: number;
-  preco: number;
+export type EntradaCanal = {
+  nome: string;
+  tipo: TipoCanal;
+  imposto: number;
+  antecipacao: number;
+  embalagem: number;
+  promocaoPadrao: number;
 };
+
+export type Modalidade = "classico" | "premium" | "unico";
 
 let pronto: Promise<void> | null = null;
 
@@ -55,17 +56,20 @@ async function migrar() {
     )
   `;
 
+  // Os três custos da conta são valores, não interruptores: zero é o desligado.
+  // `promocao` aqui é só o padrão sugerido aos anúncios novos — quem manda no
+  // cálculo é a promoção de cada anúncio.
   await sql`
     CREATE TABLE IF NOT EXISTS prec_canais (
-      id                serial PRIMARY KEY,
-      nome              text NOT NULL UNIQUE,
-      tipo              text NOT NULL CHECK (tipo IN ('ml', 'shopee')),
-      imposto           numeric(8,5) NOT NULL DEFAULT 0,
-      antecipacao_ativa boolean NOT NULL DEFAULT false,
-      embalagem_ativa   boolean NOT NULL DEFAULT true,
-      promocao          numeric(8,5) NOT NULL DEFAULT 0,
-      ativo             boolean NOT NULL DEFAULT true,
-      criado_em         timestamptz NOT NULL DEFAULT now()
+      id          serial PRIMARY KEY,
+      nome        text NOT NULL UNIQUE,
+      tipo        text NOT NULL CHECK (tipo IN ('ml', 'shopee')),
+      imposto     numeric(8,5) NOT NULL DEFAULT 0,
+      antecipacao numeric(8,5) NOT NULL DEFAULT 0,
+      embalagem   numeric(12,4) NOT NULL DEFAULT 0,
+      promocao    numeric(8,5) NOT NULL DEFAULT 0,
+      ativo       boolean NOT NULL DEFAULT true,
+      criado_em   timestamptz NOT NULL DEFAULT now()
     )
   `;
 
@@ -115,10 +119,13 @@ async function migrar() {
       comissao      numeric(8,5) NOT NULL DEFAULT 0,
       taxa_fixa     numeric(12,4) NOT NULL DEFAULT 0,
       preco         numeric(12,4) NOT NULL DEFAULT 0,
+      promocao      numeric(8,5) NOT NULL DEFAULT 0,
       atualizado_em timestamptz NOT NULL DEFAULT now(),
       UNIQUE (canal_id, sku, modalidade)
     )
   `;
+
+  await migrarParaValoresPorConta();
 
   await sql`
     CREATE INDEX IF NOT EXISTS prec_anuncios_canal_idx ON prec_anuncios (canal_id)
@@ -128,6 +135,52 @@ async function migrar() {
   `;
 
   await carregarDadosIniciais();
+}
+
+/**
+ * Converte o formato antigo, em que a conta guardava "tem antecipação? sim/não"
+ * e o percentual morava numa tabela global, para o formato em que cada conta
+ * guarda o próprio número.
+ *
+ * Roda uma vez só: o gatilho é a presença das colunas booleanas, que são
+ * apagadas ao final. Manter as duas formas conviveria com o mesmo defeito que
+ * a planilha tinha — dois lugares dizendo a mesma coisa, um deles desatualizado.
+ */
+async function migrarParaValoresPorConta() {
+  await sql.unsafe(`
+    DO $migracao$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'prec_canais' AND column_name = 'antecipacao_ativa'
+      ) THEN
+        UPDATE prec_canais c
+           SET antecipacao = CASE WHEN c.antecipacao_ativa
+                                  THEN coalesce((SELECT p.antecipacao FROM prec_parametros p WHERE p.id = 1), 0)
+                                  ELSE 0 END;
+        ALTER TABLE prec_canais DROP COLUMN antecipacao_ativa;
+      END IF;
+
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'prec_canais' AND column_name = 'embalagem_ativa'
+      ) THEN
+        UPDATE prec_canais c
+           SET embalagem = CASE WHEN c.embalagem_ativa
+                                THEN coalesce((SELECT p.embalagem FROM prec_parametros p WHERE p.id = 1), 0)
+                                ELSE 0 END;
+        ALTER TABLE prec_canais DROP COLUMN embalagem_ativa;
+
+        -- A promoção era da conta inteira; passa a ser de cada anúncio,
+        -- herdando o valor que estava valendo até agora.
+        UPDATE prec_anuncios a
+           SET promocao = c.promocao
+          FROM prec_canais c
+         WHERE c.id = a.canal_id;
+      END IF;
+    END
+    $migracao$;
+  `);
 }
 
 /**
@@ -211,13 +264,13 @@ async function carregarDadosIniciais() {
       // Se duas instâncias subirem ao mesmo tempo, uma delas perde a corrida no
       // nome único. Em vez de estourar, ela reaproveita o canal que já existe.
       await sql`
-        INSERT INTO prec_canais (nome, tipo, imposto, antecipacao_ativa, embalagem_ativa, promocao)
+        INSERT INTO prec_canais (nome, tipo, imposto, antecipacao, embalagem, promocao)
         VALUES (
           ${canal.nome},
           ${canal.tipo},
           ${canal.imposto},
-          ${canal.antecipacaoAtiva},
-          ${canal.embalagemAtiva},
+          ${canal.antecipacaoAtiva ? dados.parametros.antecipacao : 0},
+          ${canal.embalagemAtiva ? dados.parametros.embalagem : 0},
           ${canal.promocao}
         )
         ON CONFLICT (nome) DO NOTHING
@@ -235,6 +288,7 @@ async function carregarDadosIniciais() {
           comissao: a.comissao,
           taxa_fixa: a.taxaFixa,
           preco: a.preco,
+          promocao: canal.promocao,
         }));
         await sql`
           INSERT INTO prec_anuncios ${sql(
@@ -244,7 +298,8 @@ async function carregarDadosIniciais() {
             "modalidade",
             "comissao",
             "taxa_fixa",
-            "preco"
+            "preco",
+            "promocao"
           )}
           ON CONFLICT (canal_id, sku, modalidade) DO NOTHING
         `;
@@ -257,6 +312,7 @@ async function carregarDadosIniciais() {
 // Leitura
 // ---------------------------------------------------------------------------
 
+/** Valores sugeridos ao criar uma conta nova. */
 export async function lerParametros(): Promise<Parametros> {
   await ensureSchemaPrecificacao();
   const [linha] = await sql<
@@ -269,19 +325,6 @@ export async function lerParametros(): Promise<Parametros> {
   };
 }
 
-export async function salvarParametros(p: Parametros): Promise<void> {
-  await ensureSchemaPrecificacao();
-  await sql`
-    INSERT INTO prec_parametros (id, imposto, antecipacao, embalagem, atualizado_em)
-    VALUES (1, ${p.imposto}, ${p.antecipacao}, ${p.embalagem}, now())
-    ON CONFLICT (id) DO UPDATE
-       SET imposto = EXCLUDED.imposto,
-           antecipacao = EXCLUDED.antecipacao,
-           embalagem = EXCLUDED.embalagem,
-           atualizado_em = now()
-  `;
-}
-
 export async function listarCanais(): Promise<CanalSalvo[]> {
   await ensureSchemaPrecificacao();
   const linhas = await sql<
@@ -290,13 +333,13 @@ export async function listarCanais(): Promise<CanalSalvo[]> {
       nome: string;
       tipo: TipoCanal;
       imposto: string;
-      antecipacao_ativa: boolean;
-      embalagem_ativa: boolean;
+      antecipacao: string;
+      embalagem: string;
       promocao: string;
       ativo: boolean;
     }[]
   >`
-    SELECT id, nome, tipo, imposto, antecipacao_ativa, embalagem_ativa, promocao, ativo
+    SELECT id, nome, tipo, imposto, antecipacao, embalagem, promocao, ativo
       FROM prec_canais
      ORDER BY tipo, nome
   `;
@@ -305,31 +348,24 @@ export async function listarCanais(): Promise<CanalSalvo[]> {
     nome: l.nome,
     tipo: l.tipo,
     imposto: Number(l.imposto),
-    antecipacaoAtiva: l.antecipacao_ativa,
-    embalagemAtiva: l.embalagem_ativa,
-    promocao: Number(l.promocao),
+    antecipacao: Number(l.antecipacao),
+    embalagem: Number(l.embalagem),
+    promocaoPadrao: Number(l.promocao),
     ativo: l.ativo,
   }));
 }
 
-export async function criarCanal(entrada: {
-  nome: string;
-  tipo: TipoCanal;
-  imposto: number;
-  antecipacaoAtiva: boolean;
-  embalagemAtiva: boolean;
-  promocao: number;
-}): Promise<CanalSalvo> {
+export async function criarCanal(entrada: EntradaCanal): Promise<CanalSalvo> {
   await ensureSchemaPrecificacao();
   const [linha] = await sql<{ id: number }[]>`
-    INSERT INTO prec_canais (nome, tipo, imposto, antecipacao_ativa, embalagem_ativa, promocao)
+    INSERT INTO prec_canais (nome, tipo, imposto, antecipacao, embalagem, promocao)
     VALUES (
       ${entrada.nome},
       ${entrada.tipo},
       ${entrada.imposto},
-      ${entrada.antecipacaoAtiva},
-      ${entrada.embalagemAtiva},
-      ${entrada.promocao}
+      ${entrada.antecipacao},
+      ${entrada.embalagem},
+      ${entrada.promocaoPadrao}
     )
     RETURNING id
   `;
@@ -338,22 +374,22 @@ export async function criarCanal(entrada: {
 
 export async function atualizarCanal(
   id: number,
-  entrada: {
-    imposto: number;
-    antecipacaoAtiva: boolean;
-    embalagemAtiva: boolean;
-    promocao: number;
-  }
+  entrada: Omit<EntradaCanal, "nome" | "tipo">
 ): Promise<void> {
   await ensureSchemaPrecificacao();
   await sql`
     UPDATE prec_canais
        SET imposto = ${entrada.imposto},
-           antecipacao_ativa = ${entrada.antecipacaoAtiva},
-           embalagem_ativa = ${entrada.embalagemAtiva},
-           promocao = ${entrada.promocao}
+           antecipacao = ${entrada.antecipacao},
+           embalagem = ${entrada.embalagem},
+           promocao = ${entrada.promocaoPadrao}
      WHERE id = ${id}
   `;
+}
+
+export async function removerCanal(id: number): Promise<void> {
+  await ensureSchemaPrecificacao();
+  await sql`DELETE FROM prec_canais WHERE id = ${id}`;
 }
 
 export async function carregarTabelaFrete(): Promise<TabelaFrete> {
@@ -381,14 +417,10 @@ export async function carregarTabelaFrete(): Promise<TabelaFrete> {
   };
 }
 
-export type LinhaAnuncio = {
-  anuncioId: number;
+export type Situacao = "todos" | "anunciados" | "disponiveis";
+
+export type LinhaTabela = {
   sku: string;
-  modalidade: Modalidade;
-  comissao: number;
-  taxaFixa: number;
-  preco: number;
-  /** Nome curto vindo da planilha; cai para o nome do Bling quando vazio. */
   nome: string;
   marca: string | null;
   /** Falso quando o SKU não existe no catálogo lido do Bling. */
@@ -396,152 +428,164 @@ export type LinhaAnuncio = {
   custo: number;
   peso: number;
   saldo: number;
+  anunciado: boolean;
+  anuncios: {
+    anuncioId: number;
+    modalidade: Modalidade;
+    comissao: number;
+    taxaFixa: number;
+    preco: number;
+    promocao: number;
+  }[];
 };
 
-/** Os anúncios de um canal, já cruzados com o catálogo do Bling. */
-export async function listarAnuncios(canalId: number): Promise<LinhaAnuncio[]> {
+/**
+ * A lista da tela: catálogo e anúncios reunidos numa coisa só.
+ *
+ * O conjunto de SKUs é a união de dois lados — os produtos vindos do Bling e
+ * os anúncios do canal. O segundo lado importa porque a planilha trazia SKUs
+ * que não existem mais no catálogo (kits, itens descontinuados) e eles
+ * precisam continuar visíveis, marcados, em vez de sumir sem aviso.
+ */
+export async function listarLinhas(
+  canalId: number,
+  opcoes: { busca?: string; situacao?: Situacao; pagina?: number; porPagina?: number } = {}
+): Promise<{ linhas: LinhaTabela[]; total: number; pagina: number; porPagina: number }> {
   await ensureSchemaPrecificacao();
+
+  const termo = (opcoes.busca ?? "").trim().toLowerCase();
+  const situacao = opcoes.situacao ?? "todos";
+  const porPagina = Math.min(200, Math.max(10, opcoes.porPagina ?? 50));
+  const pagina = Math.max(1, opcoes.pagina ?? 1);
+  const offset = (pagina - 1) * porPagina;
+  const filtro = `%${termo}%`;
+
+  const base = sql`
+    SELECT b.sku,
+           coalesce(i.nome_curto, b.nome, b.sku) AS nome,
+           i.marca,
+           b.tem_produto,
+           b.preco_custo,
+           b.peso_liquido,
+           b.saldo,
+           EXISTS (
+             SELECT 1 FROM prec_anuncios a
+              WHERE a.canal_id = ${canalId} AND a.sku = b.sku
+           ) AS anunciado
+      FROM (
+            SELECT p.codigo AS sku, p.nome, p.preco_custo, p.peso_liquido, p.saldo,
+                   true AS tem_produto
+              FROM produtos p
+             WHERE p.codigo IS NOT NULL AND p.codigo <> ''
+            UNION
+            SELECT a.sku, NULL::text, NULL::numeric, NULL::numeric, NULL::numeric,
+                   false AS tem_produto
+              FROM prec_anuncios a
+             WHERE a.canal_id = ${canalId}
+               AND NOT EXISTS (
+                     SELECT 1 FROM produtos p
+                      WHERE p.codigo = a.sku AND p.codigo IS NOT NULL
+                   )
+           ) b
+      LEFT JOIN prec_itens i ON i.sku = b.sku
+  `;
+
+  const condSituacao =
+    situacao === "anunciados"
+      ? sql`WHERE anunciado`
+      : situacao === "disponiveis"
+        ? sql`WHERE NOT anunciado`
+        : sql`WHERE true`;
+
+  const condBusca = termo
+    ? sql`AND (lower(nome) LIKE ${filtro} OR lower(sku) LIKE ${filtro} OR lower(coalesce(marca, '')) LIKE ${filtro})`
+    : sql``;
+
   const linhas = await sql<
     {
-      id: number;
       sku: string;
-      modalidade: Modalidade;
-      comissao: string;
-      taxa_fixa: string;
-      preco: string;
-      nome_curto: string | null;
+      nome: string;
       marca: string | null;
-      nome: string | null;
+      tem_produto: boolean;
       preco_custo: string | null;
       peso_liquido: string | null;
       saldo: string | null;
+      anunciado: boolean;
     }[]
   >`
-    SELECT a.id, a.sku, a.modalidade, a.comissao, a.taxa_fixa, a.preco,
-           i.nome_curto, i.marca,
-           p.nome, p.preco_custo, p.peso_liquido, p.saldo
-      FROM prec_anuncios a
-      LEFT JOIN prec_itens i ON i.sku = a.sku
-      LEFT JOIN produtos  p ON p.codigo = a.sku
-     WHERE a.canal_id = ${canalId}
-     ORDER BY coalesce(i.nome_curto, p.nome, a.sku), a.modalidade
+    WITH tudo AS (${base})
+    SELECT * FROM tudo
+    ${condSituacao} ${condBusca}
+    ORDER BY anunciado DESC, nome
+    LIMIT ${porPagina} OFFSET ${offset}
   `;
 
-  return linhas.map((l) => ({
-    anuncioId: l.id,
-    sku: l.sku,
-    modalidade: l.modalidade,
-    comissao: Number(l.comissao),
-    taxaFixa: Number(l.taxa_fixa),
-    preco: Number(l.preco),
-    nome: l.nome_curto || l.nome || l.sku,
-    marca: l.marca,
-    temProduto: l.nome !== null,
-    custo: Number(l.preco_custo ?? 0),
-    peso: Number(l.peso_liquido ?? 0),
-    saldo: Number(l.saldo ?? 0),
-  }));
-}
+  const [{ total }] = await sql<{ total: number }[]>`
+    WITH tudo AS (${base})
+    SELECT count(*)::int AS total FROM tudo
+    ${condSituacao} ${condBusca}
+  `;
 
-export type ProdutoDisponivel = {
-  sku: string;
-  nome: string;
-  marca: string | null;
-  custo: number;
-  peso: number;
-  saldo: number;
-};
-
-/** Produtos do catálogo que ainda não têm anúncio neste canal. */
-export async function listarDisponiveis(
-  canalId: number,
-  busca: string,
-  limite = 50
-): Promise<{ produtos: ProdutoDisponivel[]; total: number }> {
-  await ensureSchemaPrecificacao();
-  const termo = busca.trim().toLowerCase();
-  const filtro = `%${termo}%`;
-
-  // Duas versões da consulta em vez de um booleano solto no WHERE: o Postgres
-  // às vezes não consegue inferir o tipo de um parâmetro isolado. É também o
-  // formato já usado em /api/products.
-  type Linha = {
-    codigo: string;
-    nome: string;
-    marca: string | null;
-    preco_custo: string;
-    peso_liquido: string;
-    saldo: string;
-  };
-
-  const linhas = termo
-    ? await sql<Linha[]>`
-        SELECT p.codigo, coalesce(i.nome_curto, p.nome) AS nome, i.marca,
-               p.preco_custo, p.peso_liquido, p.saldo
-          FROM produtos p
-          LEFT JOIN prec_itens i ON i.sku = p.codigo
-         WHERE p.codigo IS NOT NULL
-           AND NOT EXISTS (
-                 SELECT 1 FROM prec_anuncios a
-                  WHERE a.canal_id = ${canalId} AND a.sku = p.codigo
-               )
-           AND (lower(p.nome) LIKE ${filtro}
-                OR lower(p.codigo) LIKE ${filtro}
-                OR lower(coalesce(i.nome_curto, '')) LIKE ${filtro})
-         ORDER BY nome
-         LIMIT ${limite}
+  const skus = linhas.map((l) => l.sku);
+  const anuncios = skus.length
+    ? await sql<
+        {
+          id: number;
+          sku: string;
+          modalidade: Modalidade;
+          comissao: string;
+          taxa_fixa: string;
+          preco: string;
+          promocao: string;
+        }[]
+      >`
+        SELECT id, sku, modalidade, comissao, taxa_fixa, preco, promocao
+          FROM prec_anuncios
+         WHERE canal_id = ${canalId} AND sku IN ${sql(skus)}
       `
-    : await sql<Linha[]>`
-        SELECT p.codigo, coalesce(i.nome_curto, p.nome) AS nome, i.marca,
-               p.preco_custo, p.peso_liquido, p.saldo
-          FROM produtos p
-          LEFT JOIN prec_itens i ON i.sku = p.codigo
-         WHERE p.codigo IS NOT NULL
-           AND NOT EXISTS (
-                 SELECT 1 FROM prec_anuncios a
-                  WHERE a.canal_id = ${canalId} AND a.sku = p.codigo
-               )
-         ORDER BY nome
-         LIMIT ${limite}
-      `;
+    : [];
 
-  const [{ total }] = termo
-    ? await sql<{ total: number }[]>`
-        SELECT count(*)::int AS total
-          FROM produtos p
-          LEFT JOIN prec_itens i ON i.sku = p.codigo
-         WHERE p.codigo IS NOT NULL
-           AND NOT EXISTS (
-                 SELECT 1 FROM prec_anuncios a
-                  WHERE a.canal_id = ${canalId} AND a.sku = p.codigo
-               )
-           AND (lower(p.nome) LIKE ${filtro}
-                OR lower(p.codigo) LIKE ${filtro}
-                OR lower(coalesce(i.nome_curto, '')) LIKE ${filtro})
-      `
-    : await sql<{ total: number }[]>`
-        SELECT count(*)::int AS total
-          FROM produtos p
-          LEFT JOIN prec_itens i ON i.sku = p.codigo
-         WHERE p.codigo IS NOT NULL
-           AND NOT EXISTS (
-                 SELECT 1 FROM prec_anuncios a
-                  WHERE a.canal_id = ${canalId} AND a.sku = p.codigo
-               )
-      `;
+  const porSku = new Map<string, LinhaTabela["anuncios"]>();
+  for (const a of anuncios) {
+    const lista = porSku.get(a.sku) ?? [];
+    lista.push({
+      anuncioId: a.id,
+      modalidade: a.modalidade,
+      comissao: Number(a.comissao),
+      taxaFixa: Number(a.taxa_fixa),
+      preco: Number(a.preco),
+      promocao: Number(a.promocao),
+    });
+    porSku.set(a.sku, lista);
+  }
 
   return {
-    produtos: linhas.map((l) => ({
-      sku: l.codigo,
+    linhas: linhas.map((l) => ({
+      sku: l.sku,
       nome: l.nome,
       marca: l.marca,
-      custo: Number(l.preco_custo),
-      peso: Number(l.peso_liquido),
-      saldo: Number(l.saldo),
+      temProduto: l.tem_produto,
+      custo: Number(l.preco_custo ?? 0),
+      peso: Number(l.peso_liquido ?? 0),
+      saldo: Number(l.saldo ?? 0),
+      anunciado: l.anunciado,
+      anuncios: porSku.get(l.sku) ?? [],
     })),
     total,
+    pagina,
+    porPagina,
   };
 }
+
+/** Quantos produtos o catálogo do Bling tem neste banco. Zero = nunca foi lido. */
+export async function totalDoCatalogo(): Promise<number> {
+  await ensureSchemaPrecificacao();
+  const [{ total }] = await sql<{ total: number }[]>`
+    SELECT count(*)::int AS total FROM produtos
+  `;
+  return total;
+}
+
 
 // ---------------------------------------------------------------------------
 // Escrita de anúncios
@@ -556,8 +600,8 @@ const COMISSAO_PADRAO: Record<Modalidade, { comissao: number; taxaFixa: number }
 
 export async function adicionarAoCanal(canalId: number, sku: string): Promise<void> {
   await ensureSchemaPrecificacao();
-  const [canal] = await sql<{ tipo: TipoCanal }[]>`
-    SELECT tipo FROM prec_canais WHERE id = ${canalId}
+  const [canal] = await sql<{ tipo: TipoCanal; promocao: string }[]>`
+    SELECT tipo, promocao FROM prec_canais WHERE id = ${canalId}
   `;
   if (!canal) throw new Error("Canal não encontrado.");
 
@@ -567,8 +611,9 @@ export async function adicionarAoCanal(canalId: number, sku: string): Promise<vo
   for (const modalidade of modalidades) {
     const padrao = COMISSAO_PADRAO[modalidade];
     await sql`
-      INSERT INTO prec_anuncios (canal_id, sku, modalidade, comissao, taxa_fixa, preco)
-      VALUES (${canalId}, ${sku}, ${modalidade}, ${padrao.comissao}, ${padrao.taxaFixa}, 0)
+      INSERT INTO prec_anuncios (canal_id, sku, modalidade, comissao, taxa_fixa, preco, promocao)
+      VALUES (${canalId}, ${sku}, ${modalidade}, ${padrao.comissao}, ${padrao.taxaFixa}, 0,
+              ${Number(canal.promocao)})
       ON CONFLICT (canal_id, sku, modalidade) DO NOTHING
     `;
   }
@@ -576,11 +621,13 @@ export async function adicionarAoCanal(canalId: number, sku: string): Promise<vo
 
 export async function salvarAnuncio(
   anuncioId: number,
-  campos: { comissao?: number; taxaFixa?: number; preco?: number }
+  campos: { comissao?: number; taxaFixa?: number; preco?: number; promocao?: number }
 ): Promise<void> {
   await ensureSchemaPrecificacao();
-  const [atual] = await sql<{ comissao: string; taxa_fixa: string; preco: string }[]>`
-    SELECT comissao, taxa_fixa, preco FROM prec_anuncios WHERE id = ${anuncioId}
+  const [atual] = await sql<
+    { comissao: string; taxa_fixa: string; preco: string; promocao: string }[]
+  >`
+    SELECT comissao, taxa_fixa, preco, promocao FROM prec_anuncios WHERE id = ${anuncioId}
   `;
   if (!atual) throw new Error("Anúncio não encontrado.");
 
@@ -589,6 +636,7 @@ export async function salvarAnuncio(
        SET comissao = ${campos.comissao ?? Number(atual.comissao)},
            taxa_fixa = ${campos.taxaFixa ?? Number(atual.taxa_fixa)},
            preco = ${campos.preco ?? Number(atual.preco)},
+           promocao = ${campos.promocao ?? Number(atual.promocao)},
            atualizado_em = now()
      WHERE id = ${anuncioId}
   `;

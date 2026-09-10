@@ -198,13 +198,6 @@ export default function Painel() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3 pb-1">
-              <a
-                href="/precificacao"
-                className="border-ink-line rounded-[6px] border px-4 py-2.5 text-sm font-medium hover:bg-ink-soft"
-              >
-                Precificação
-              </a>
-
               {!status?.conectado && !carregando && (
                 <a
                   href="/bling/authorize"

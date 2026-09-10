@@ -42,6 +42,7 @@ export async function PATCH(req: Request) {
       comissao?: number;
       taxaFixa?: number;
       preco?: number;
+      promocao?: number;
     };
     if (!corpo.anuncioId) throw new Error("Informe o anúncio.");
 
@@ -51,11 +52,19 @@ export async function PATCH(req: Request) {
         throw new Error(`Valor inválido em ${campo}.`);
       }
     }
+    // Comissão e promoção são frações: acima de 1 seria mais de 100%.
+    for (const campo of ["comissao", "promocao"] as const) {
+      const valor = corpo[campo];
+      if (valor !== undefined && valor > 1) {
+        throw new Error(`${campo === "comissao" ? "Comissão" : "Promoção"} acima de 100%.`);
+      }
+    }
 
     await salvarAnuncio(corpo.anuncioId, {
       comissao: corpo.comissao,
       taxaFixa: corpo.taxaFixa,
       preco: corpo.preco,
+      promocao: corpo.promocao,
     });
     return NextResponse.json({ ok: true });
   } catch (erro) {
