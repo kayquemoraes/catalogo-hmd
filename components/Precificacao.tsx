@@ -100,6 +100,43 @@ const ESTOQUES: { id: Estoque; rotulo: string }[] = [
   { id: "em_falta", rotulo: "Em falta" },
 ];
 
+const CHAVE_VISUALIZACAO = "hmd:precificacao:visualizacao";
+
+type Visualizacao = {
+  canalId: number | null;
+  busca: { sku: string; nome: string; marca: string };
+  situacao: Situacao;
+  estoque: Estoque;
+};
+
+/**
+ * O recorte escolhido sobrevive a sair da página e voltar.
+ *
+ * Fica no navegador, e não na URL, porque voltar pela barra de navegação leva
+ * a /precificacao sem parâmetro nenhum — guardar na URL cobriria o recarregar
+ * e o botão voltar, mas não o caminho que se usa o dia inteiro.
+ *
+ * A página em si não é guardada de propósito: com outro filtro, ou com o
+ * catálogo mudado, a página 7 de ontem pode não existir mais hoje.
+ */
+function lerVisualizacao(): Partial<Visualizacao> | null {
+  try {
+    const bruto = window.localStorage.getItem(CHAVE_VISUALIZACAO);
+    return bruto ? (JSON.parse(bruto) as Partial<Visualizacao>) : null;
+  } catch {
+    // Navegador com armazenamento bloqueado: a tela abre no padrão e segue.
+    return null;
+  }
+}
+
+function guardarVisualizacao(v: Visualizacao): void {
+  try {
+    window.localStorage.setItem(CHAVE_VISUALIZACAO, JSON.stringify(v));
+  } catch {
+    /* nada a fazer: guardar a preferência não pode derrubar a tela */
+  }
+}
+
 export default function Precificacao() {
   const [contexto, setContexto] = useState<Contexto | null>(null);
   const [canalId, setCanalId] = useState<number | null>(null);
@@ -120,7 +157,26 @@ export default function Precificacao() {
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(0);
 
+  // As buscas esperam a restauração para não consultar duas vezes: uma com o
+  // filtro vazio e outra com o filtro que já estava escolhido.
+  const [restaurado, setRestaurado] = useState(false);
+  const canalGuardado = useRef<number | null>(null);
+
   const pedido = useRef(0);
+
+  useEffect(() => {
+    const guardado = lerVisualizacao();
+    if (guardado) {
+      canalGuardado.current = guardado.canalId ?? null;
+      if (guardado.busca) {
+        setBusca(guardado.busca);
+        setFiltro(guardado.busca);
+      }
+      if (guardado.situacao) setSituacao(guardado.situacao);
+      if (guardado.estoque) setEstoque(guardado.estoque);
+    }
+    setRestaurado(true);
+  }, []);
 
   // --- carregamento --------------------------------------------------------
 
@@ -131,13 +187,21 @@ export default function Precificacao() {
         const dados = await r.json();
         if (!r.ok) throw new Error(dados.erro ?? "Não foi possível carregar.");
         setContexto(dados);
-        setCanalId(dados.canalAtual);
+        // A conta guardada pode ter sido apagada desde a última visita.
+        const existe = (dados.canais as CanalSalvo[]).some(
+          (c) => c.id === canalGuardado.current
+        );
+        setCanalId(existe ? canalGuardado.current : dados.canalAtual);
       } catch (e) {
         setErro(e instanceof Error ? e.message : String(e));
       } finally {
         setCarregandoContexto(false);
       }
     })();
+    // Sem `restaurado` nas dependências de propósito: isto rodaria duas vezes,
+    // e a conta guardada já está na referência — o efeito que a lê é declarado
+    // antes deste e os efeitos rodam na ordem em que aparecem.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -158,7 +222,7 @@ export default function Precificacao() {
   }, [filtro, situacao, estoque]);
 
   const buscarLinhas = useCallback(async () => {
-    if (!canalId) return;
+    if (!canalId || !restaurado) return;
     const meu = ++pedido.current;
     setCarregandoLinhas(true);
     try {
@@ -177,7 +241,7 @@ export default function Precificacao() {
     } finally {
       if (meu === pedido.current) setCarregandoLinhas(false);
     }
-  }, [canalId, parametros, pagina]);
+  }, [canalId, parametros, pagina, restaurado]);
 
   useEffect(() => {
     void buscarLinhas();
@@ -189,7 +253,7 @@ export default function Precificacao() {
    * salvamento, para os cartões não descreverem um estado que já mudou.
    */
   const buscarResumo = useCallback(async () => {
-    if (!canalId) return;
+    if (!canalId || !restaurado) return;
     try {
       const r = await fetch(`/api/precificacao/resumo?canal=${canalId}&${parametros}`);
       const dados = await r.json();
@@ -197,11 +261,16 @@ export default function Precificacao() {
     } catch {
       /* os cartões são acessórios: falhar aqui não derruba a tela */
     }
-  }, [canalId, parametros]);
+  }, [canalId, parametros, restaurado]);
 
   useEffect(() => {
     void buscarResumo();
   }, [buscarResumo]);
+
+  useEffect(() => {
+    if (!restaurado) return;
+    guardarVisualizacao({ canalId, busca, situacao, estoque });
+  }, [restaurado, canalId, busca, situacao, estoque]);
 
   const canal = useMemo(
     () => contexto?.canais.find((c) => c.id === canalId) ?? null,
