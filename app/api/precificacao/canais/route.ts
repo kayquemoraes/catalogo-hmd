@@ -74,8 +74,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, canal });
   } catch (erro) {
-    if (erro instanceof Error && erro.message.includes("prec_canais_nome_key")) {
-      return falha(new Error("Já existe uma conta com esse nome."));
+    if (erro instanceof Error && erro.message.includes("prec_canais_nome_tipo")) {
+      return falha(new Error("Já existe uma conta com esse nome neste marketplace."));
     }
     return falha(erro);
   }
@@ -106,8 +106,8 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (erro) {
-    if (erro instanceof Error && erro.message.includes("prec_canais_nome_key")) {
-      return falha(new Error("Já existe outra conta com esse nome."));
+    if (erro instanceof Error && erro.message.includes("prec_canais_nome_tipo")) {
+      return falha(new Error("Já existe outra conta com esse nome neste marketplace."));
     }
     return falha(erro);
   }

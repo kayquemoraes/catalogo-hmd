@@ -45,6 +45,8 @@ export default function Contas() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [salvando, setSalvando] = useState<number | null>(null);
   const [criando, setCriando] = useState(false);
+  /** Conta cuja exclusão está sendo confirmada, dentro do próprio cartão. */
+  const [apagando, setApagando] = useState<number | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -99,19 +101,6 @@ export default function Contas() {
   };
 
   const remover = async (conta: Conta) => {
-    // Confere contra o nome que está no banco: se houver uma renomeação ainda
-    // não salva na tela, o nome digitado aqui não é o que a conta se chama.
-    const salvo = original.find((c) => c.id === conta.id) ?? conta;
-    const texto =
-      `Apagar a conta "${conta.nome}"?\n\n` +
-      `Todos os anúncios dela — preços, comissões e promoções — serão apagados junto. ` +
-      `Isso não tem desfazer.\n\nDigite o nome da conta para confirmar:`;
-    const resposta = prompt(texto);
-    if (resposta !== salvo.nome) {
-      if (resposta !== null) setErro("Nome digitado não confere. Nada foi apagado.");
-      return;
-    }
-
     setSalvando(conta.id);
     try {
       const r = await fetch("/api/precificacao/canais", {
@@ -120,7 +109,8 @@ export default function Contas() {
         body: JSON.stringify({ id: conta.id }),
       });
       if (!r.ok) throw new Error((await r.json()).erro ?? "Não foi possível apagar.");
-      setAviso(`Conta ${salvo.nome} apagada.`);
+      setAviso(`Conta ${conta.nome} apagada.`);
+      setApagando(null);
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
@@ -194,12 +184,14 @@ export default function Contas() {
                         {NOME_TIPO[conta.tipo]}
                       </span>
                     </div>
-                    <button
-                      onClick={() => void remover(conta)}
-                      className="text-muted hover:text-alert text-xs underline underline-offset-4"
-                    >
-                      apagar conta
-                    </button>
+                    {apagando !== conta.id && (
+                      <button
+                        onClick={() => setApagando(conta.id)}
+                        className="text-muted hover:text-alert text-xs underline underline-offset-4"
+                      >
+                        apagar conta
+                      </button>
+                    )}
                   </div>
 
                   <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -262,6 +254,18 @@ export default function Contas() {
                     A promoção de cada anúncio é editável na tela de Precificação. Mudar a
                     promoção padrão aqui <strong>não altera</strong> os anúncios que já existem.
                   </p>
+
+                  {apagando === conta.id && (
+                    <ConfirmacaoDeExclusao
+                      // O nome exigido é o guardado, não o do campo: com uma
+                      // renomeação ainda não salva, o cartão mostra um nome que
+                      // a conta ainda não tem, e seria impossível acertar.
+                      nome={(original.find((c) => c.id === conta.id) ?? conta).nome}
+                      ocupado={salvando === conta.id}
+                      onCancelar={() => setApagando(null)}
+                      onConfirmar={() => void remover(conta)}
+                    />
+                  )}
                 </section>
               );
             })}
@@ -300,6 +304,67 @@ export default function Contas() {
         )}
       </div>
     </main>
+  );
+}
+
+/**
+ * Confirmação dentro do próprio cartão, no lugar de uma caixa do navegador.
+ *
+ * Digitar o nome não é cerimônia: apagar uma conta leva junto todos os
+ * anúncios dela, com os preços que levaram tempo para ser ajustados, e não tem
+ * desfazer. O gesto precisa ser deliberado, e o nome fica à vista logo acima.
+ */
+function ConfirmacaoDeExclusao({
+  nome,
+  ocupado,
+  onCancelar,
+  onConfirmar,
+}: {
+  nome: string;
+  ocupado: boolean;
+  onCancelar: () => void;
+  onConfirmar: () => void;
+}) {
+  const [digitado, setDigitado] = useState("");
+  const confere = digitado.trim() === nome;
+
+  return (
+    <div className="border-alert/40 bg-alert-soft/60 mt-4 rounded-[6px] border p-4">
+      <p className="text-alert text-sm font-medium">Apagar a conta {nome}?</p>
+      <p className="text-muted mt-1 text-sm">
+        Todos os anúncios dela — preços, comissões e promoções — serão apagados junto.
+        Isso não tem desfazer.
+      </p>
+
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <label className="text-sm">
+          <span className="text-muted block text-xs">
+            Digite <strong className="text-ink">{nome}</strong> para confirmar
+          </span>
+          <input
+            value={digitado}
+            autoFocus
+            onChange={(e) => setDigitado(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && confere && !ocupado) onConfirmar();
+              if (e.key === "Escape") onCancelar();
+            }}
+            className="border-sage focus:border-alert mt-1 w-56 rounded-[6px] border px-3 py-1.5"
+          />
+        </label>
+
+        <button
+          onClick={onConfirmar}
+          disabled={!confere || ocupado}
+          className="bg-alert rounded-[6px] px-4 py-2 text-sm font-medium text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {ocupado ? "Apagando…" : "Apagar conta"}
+        </button>
+        <button onClick={onCancelar} className="text-muted text-sm underline underline-offset-4">
+          cancelar
+        </button>
+      </div>
+    </div>
   );
 }
 

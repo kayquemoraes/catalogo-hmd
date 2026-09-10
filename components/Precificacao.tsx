@@ -156,6 +156,8 @@ export default function Precificacao() {
   const [carregandoLinhas, setCarregandoLinhas] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(0);
+  // SKU aguardando confirmação de remoção, na própria linha.
+  const [confirmando, setConfirmando] = useState<string | null>(null);
 
   // As buscas esperam a restauração para não consultar duas vezes: uma com o
   // filtro vazio e outra com o filtro que já estava escolhido.
@@ -236,6 +238,7 @@ export default function Precificacao() {
       setLinhas(dados.linhas);
       setTotal(dados.total);
       setPorPagina(dados.porPagina);
+      setConfirmando(null);
     } catch (e) {
       if (meu === pedido.current) setErro(e instanceof Error ? e.message : String(e));
     } finally {
@@ -469,9 +472,9 @@ export default function Precificacao() {
   );
 
   const remover = useCallback(
-    async (sku: string, nome: string) => {
+    async (sku: string) => {
       if (!canalId) return;
-      if (!confirm(`Deixar de anunciar "${nome}" nesta conta?\n\nO preço cadastrado será perdido.`)) return;
+      setConfirmando(null);
       setSalvando((n) => n + 1);
       try {
         const r = await fetch("/api/precificacao/anuncios", {
@@ -820,13 +823,32 @@ export default function Precificacao() {
                         );
                       })}
                       <td className="px-1 py-1.5">
-                        <button
-                          onClick={() => void remover(linha.sku, linha.nome)}
-                          title={`Deixar de anunciar ${linha.nome} nesta conta`}
-                          className="text-muted hover:text-alert text-[11px] underline underline-offset-2"
-                        >
-                          remover
-                        </button>
+                        {confirmando === linha.sku ? (
+                          // A confirmação acontece na própria linha: o que vai
+                          // ser apagado continua à vista enquanto se decide.
+                          <span className="inline-flex items-center gap-1">
+                            <button
+                              onClick={() => void remover(linha.sku)}
+                              className="bg-alert rounded-[4px] px-1.5 py-0.5 text-[11px] font-medium text-white"
+                            >
+                              remover
+                            </button>
+                            <button
+                              onClick={() => setConfirmando(null)}
+                              className="text-muted hover:text-ink text-[11px]"
+                            >
+                              não
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmando(linha.sku)}
+                            title={`Deixar de anunciar ${linha.nome} nesta conta`}
+                            className="text-muted hover:text-alert text-[11px] underline underline-offset-2"
+                          >
+                            remover
+                          </button>
+                        )}
                       </td>
                     </>
                   )}

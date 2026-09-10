@@ -71,7 +71,7 @@ async function migrar() {
   await sql`
     CREATE TABLE IF NOT EXISTS prec_canais (
       id          serial PRIMARY KEY,
-      nome        text NOT NULL UNIQUE,
+      nome        text NOT NULL,
       tipo        text NOT NULL CHECK (tipo IN ('ml', 'shopee')),
       imposto     numeric(8,5) NOT NULL DEFAULT 0,
       antecipacao numeric(8,5) NOT NULL DEFAULT 0,
@@ -136,6 +136,7 @@ async function migrar() {
   `;
 
   await migrarParaValoresPorConta();
+  await nomeUnicoPorMarketplace();
 
   await sql`
     CREATE INDEX IF NOT EXISTS prec_anuncios_canal_idx ON prec_anuncios (canal_id)
@@ -193,6 +194,20 @@ async function migrarParaValoresPorConta() {
        SET antecipacao_ativa = false,
            antecipacao = coalesce((SELECT p.antecipacao FROM prec_parametros p WHERE p.id = 1), 0)
      WHERE c.antecipacao = 0
+  `;
+}
+
+/**
+ * O nome da conta era único no sistema inteiro. Passa a ser único por
+ * marketplace: nada impede ter um "hmd1" no Mercado Livre e outro na Shopee —
+ * são contas diferentes, em lugares diferentes, e obrigar nomes distintos só
+ * gerava sufixos artificiais.
+ */
+async function nomeUnicoPorMarketplace() {
+  await sql`ALTER TABLE prec_canais DROP CONSTRAINT IF EXISTS prec_canais_nome_key`;
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS prec_canais_nome_tipo_idx
+      ON prec_canais (nome, tipo)
   `;
 }
 
@@ -414,7 +429,7 @@ export async function listarCanais(): Promise<CanalSalvo[]> {
   >`
     SELECT id, nome, tipo, imposto, antecipacao, antecipacao_ativa, embalagem, promocao, ativo
       FROM prec_canais
-     ORDER BY tipo, nome
+     ORDER BY criado_em, id
   `;
   return linhas.map((l) => ({
     id: l.id,
