@@ -45,8 +45,7 @@ type Linha = {
   anuncios: AnuncioLinha[];
 };
 
-type Resumo = {
-  produtos: number;
+type Numeros = {
   comPreco: number;
   comMargem: number;
   prejuizo: number;
@@ -56,6 +55,12 @@ type Resumo = {
   margemPonderada: number | null;
   /** Média simples das margens: a do anúncio típico. */
   margemSimples: number | null;
+};
+
+type Resumo = {
+  produtos: number;
+  geral: Numeros;
+  modalidades: Partial<Record<Modalidade, Numeros>>;
 };
 
 type Contexto = {
@@ -365,17 +370,17 @@ export default function Precificacao() {
   return (
     <main className="min-h-screen">
       <header className="bg-ink text-paper">
-        <div className="mx-auto max-w-[1800px] px-4 py-7 sm:px-6">
-          <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-6">
+        <div className="mx-auto max-w-[1800px] px-4 py-4 sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
             <div className="min-w-0">
-              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Precificação</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">Precificação</h1>
 
               {carregandoContexto ? (
-                <p className="text-sage-deep mt-3 text-sm">Carregando…</p>
+                <p className="text-sage-deep mt-1.5 text-sm">Carregando…</p>
               ) : canal ? (
                 // Antes era uma frase corrida com quatro valores separados por
                 // pontos; virava um borrão. Cada dado agora tem rótulo próprio.
-                <dl className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+                <dl className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1">
                   <div className="flex items-baseline gap-2">
                     <dt className="sr-only">Conta</dt>
                     <dd className="text-paper text-base font-medium">{canal.nome}</dd>
@@ -388,40 +393,27 @@ export default function Precificacao() {
                   <DadoDaConta rotulo="Embalagem" valor={moeda.format(canal.embalagem)} />
                 </dl>
               ) : (
-                <p className="text-sage-deep mt-3 text-sm">Nenhuma conta cadastrada</p>
+                <p className="text-sage-deep mt-1.5 text-sm">Nenhuma conta cadastrada</p>
               )}
             </div>
 
-            {/* Os dois números que dizem se a precificação está saudável. */}
-            <div className="flex gap-3">
-              <Indicador
-                rotulo="Margem média"
-                valor={
-                  resumo?.margemPonderada == null ? "—" : pct(resumo.margemPonderada)
-                }
-                nota={
-                  !resumo
-                    ? "carregando…"
-                    : resumo.margemPonderada === null
-                      ? resumo.comPreco > 0
-                        ? "sem custo dos produtos"
-                        : "nenhum anúncio com preço"
-                      : `${inteiro.format(resumo.comMargem)} anúncios · ponderada pelo custo`
-                }
-              />
-              <Indicador
-                rotulo="No prejuízo"
-                valor={resumo ? inteiro.format(resumo.prejuizo) : "—"}
-                nota={
-                  !resumo
-                    ? "carregando…"
-                    : resumo.prejuizo > 0
-                      ? "vendem abaixo do custo"
-                      : resumo.comMargem > 0
-                        ? "nenhum no filtro atual"
-                        : "sem custo para comparar"
-                }
-                alerta={Boolean(resumo && resumo.prejuizo > 0)}
+            {/* Clássico e Premium têm comissões diferentes; somados, escondem
+                justamente a comparação que interessa. O geral fecha a conta. */}
+            <div className="flex flex-wrap gap-2">
+              {modalidades.length > 1 &&
+                modalidades.map((m) => (
+                  <CartaoResumo
+                    key={m}
+                    rotulo={ROTULO[m]}
+                    numeros={resumo?.modalidades[m] ?? null}
+                    carregando={!resumo}
+                  />
+                ))}
+              <CartaoResumo
+                rotulo={modalidades.length > 1 ? "Geral" : "Resumo"}
+                numeros={resumo?.geral ?? null}
+                carregando={!resumo}
+                destacado={modalidades.length > 1}
               />
             </div>
 
@@ -435,7 +427,7 @@ export default function Precificacao() {
                     setCanalId(Number(e.target.value));
                     setPagina(1);
                   }}
-                  className="border-ink-line bg-ink-soft text-paper rounded-[6px] border px-3 py-2.5 text-sm"
+                  className="border-ink-line bg-ink-soft text-paper rounded-[6px] border px-3 py-2 text-sm"
                 >
                   {contexto?.canais.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -446,7 +438,7 @@ export default function Precificacao() {
               </label>
               <a
                 href="/contas"
-                className="border-ink-line rounded-[6px] border px-4 py-2.5 text-sm font-medium hover:bg-ink-soft"
+                className="border-ink-line rounded-[6px] border px-3.5 py-2 text-sm font-medium hover:bg-ink-soft"
               >
                 Editar conta
               </a>
@@ -456,7 +448,7 @@ export default function Precificacao() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1800px] px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-[1800px] px-4 py-4 sm:px-6">
         {semCatalogo && (
           <div className="bg-amber-soft text-amber mb-6 rounded-[6px] px-4 py-3 text-sm">
             O catálogo do Bling ainda não foi lido neste ambiente. Você pode cadastrar preços
@@ -476,7 +468,7 @@ export default function Precificacao() {
         )}
 
         {/* Barra de filtros */}
-        <div className="border-sage bg-paper-raised mb-4 flex flex-wrap items-center gap-4 rounded-[6px] border px-4 py-3">
+        <div className="border-sage bg-paper-raised mb-3 flex flex-wrap items-center gap-4 rounded-[6px] border px-4 py-3">
           <CampoDeBusca
             rotulo="SKU"
             valor={busca.sku}
@@ -522,7 +514,7 @@ export default function Precificacao() {
         {/* Tabela */}
         {/* A tabela tem a própria rolagem vertical: assim o cabeçalho gruda
             dentro dela, sem depender de medir a altura do que vem acima. */}
-        <div className="border-sage bg-paper-raised max-h-[calc(100vh-19rem)] min-h-[18rem] overflow-y-auto rounded-[6px] border">
+        <div className="border-sage bg-paper-raised max-h-[calc(100vh-16rem)] min-h-[18rem] overflow-y-auto rounded-[6px] border">
           <table className="w-full table-fixed border-collapse text-xs">
             {/* Larguras fixas em porcentagem: a tabela cabe sempre na largura
                 disponível, em vez de empurrar uma barra de rolagem lateral. */}
@@ -754,35 +746,63 @@ function DadoDaConta({ rotulo, valor }: { rotulo: string; valor: string }) {
 }
 
 /**
- * Cartão de número no cabeçalho. Fica em vermelho quando o que ele conta é
- * um problema — um único anúncio no prejuízo já merece ser visto de longe.
+ * Cartão de resumo de um recorte — uma modalidade ou o total.
+ *
+ * A margem fica em destaque; embaixo, quantos anúncios entraram na conta e
+ * quantos estão no prejuízo. O prejuízo acende em vermelho a partir de um:
+ * vender abaixo do custo merece ser visto de longe.
  */
-function Indicador({
+function CartaoResumo({
   rotulo,
-  valor,
-  nota,
-  alerta,
+  numeros,
+  carregando,
+  destacado,
 }: {
   rotulo: string;
-  valor: string;
-  nota: string;
-  alerta?: boolean;
+  numeros: Numeros | null;
+  carregando: boolean;
+  destacado?: boolean;
 }) {
+  const semMargem = !numeros || numeros.margemPonderada === null;
+  const prejuizo = numeros?.prejuizo ?? 0;
+
   return (
     <div
-      className={`min-w-[9.5rem] rounded-[6px] border px-4 py-3 ${
-        alerta ? "border-alert/50 bg-alert/15" : "border-ink-line bg-ink-soft"
+      className={`min-w-[9rem] rounded-[6px] border px-3 py-2 ${
+        prejuizo > 0
+          ? "border-alert/50 bg-alert/15"
+          : destacado
+            ? "border-sage-deep/40 bg-ink-soft"
+            : "border-ink-line bg-ink-soft/60"
       }`}
     >
-      <p className="text-sage-deep text-[11px] tracking-wide uppercase">{rotulo}</p>
-      <p
-        className={`num mt-1 text-2xl leading-none font-semibold ${
-          alerta ? "text-alert-soft" : "text-paper"
-        }`}
-      >
-        {valor}
+      <p className="text-sage-deep text-[10px] font-medium tracking-wider uppercase">{rotulo}</p>
+
+      <p className="num text-paper mt-0.5 text-xl leading-none font-semibold">
+        {carregando ? "…" : semMargem ? "—" : pct(numeros!.margemPonderada!)}
       </p>
-      <p className="text-sage-deep mt-1.5 text-[11px]">{nota}</p>
+
+      <p className="text-sage-deep mt-1 text-[11px] leading-tight">
+        {carregando
+          ? "carregando…"
+          : semMargem
+            ? numeros && numeros.comPreco > 0
+              ? "sem custo dos produtos"
+              : "sem anúncio com preço"
+            : null}
+        {!carregando && !semMargem && (
+          <>
+            {inteiro.format(numeros!.comMargem)} anúncios ·{" "}
+            {prejuizo > 0 ? (
+              <span className="text-alert-soft font-semibold">
+                {inteiro.format(prejuizo)} no prejuízo
+              </span>
+            ) : (
+              "nenhum no prejuízo"
+            )}
+          </>
+        )}
+      </p>
     </div>
   );
 }

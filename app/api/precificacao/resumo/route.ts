@@ -18,6 +18,10 @@ export const dynamic = "force-dynamic";
  * A margem média é ponderada pelo custo: soma-se todo o lucro e divide-se pela
  * soma de todos os custos. Responde "quanto o dinheiro investido rende", em vez
  * de dar o mesmo peso a um cabo e a um amplificador.
+ *
+ * Os números vêm quebrados por modalidade além do total, porque Clássico e
+ * Premium têm comissões diferentes e misturá-los esconde justamente a
+ * comparação que interessa: qual das duas está pagando melhor.
  */
 export async function GET(req: Request) {
   if (!(await temSessao())) {
@@ -38,17 +42,38 @@ export async function GET(req: Request) {
       listarLinhas(canalId, { ...filtrosDaUrl(searchParams), todas: true }),
     ]);
 
-    let comPreco = 0;
-    let comMargem = 0;
-    let prejuizo = 0;
-    let somaLucro = 0;
-    let somaCusto = 0;
-    let somaMargens = 0;
+    /** Um acumulador por modalidade, mais o geral que soma todas. */
+    type Acumulador = {
+      comPreco: number;
+      comMargem: number;
+      prejuizo: number;
+      lucro: number;
+      custo: number;
+      somaMargens: number;
+    };
+    const zerado = (): Acumulador => ({
+      comPreco: 0,
+      comMargem: 0,
+      prejuizo: 0,
+      lucro: 0,
+      custo: 0,
+      somaMargens: 0,
+    });
+
+    const geral = zerado();
+    const porModalidade = new Map<string, Acumulador>();
 
     for (const linha of linhas) {
       for (const anuncio of linha.anuncios) {
         if (anuncio.preco <= 0) continue;
-        comPreco++;
+
+        let bloco = porModalidade.get(anuncio.modalidade);
+        if (!bloco) {
+          bloco = zerado();
+          porModalidade.set(anuncio.modalidade, bloco);
+        }
+
+        for (const alvo of [bloco, geral]) alvo.comPreco++;
         if (linha.custo <= 0) continue;
 
         const r = calcular(
@@ -63,25 +88,34 @@ export async function GET(req: Request) {
           tabela
         );
 
-        comMargem++;
-        somaLucro += r.lucro;
-        somaCusto += linha.custo;
-        if (r.margem !== null) somaMargens += r.margem;
-        if (r.lucro < 0) prejuizo++;
+        for (const alvo of [bloco, geral]) {
+          alvo.comMargem++;
+          alvo.lucro += r.lucro;
+          alvo.custo += linha.custo;
+          if (r.margem !== null) alvo.somaMargens += r.margem;
+          if (r.lucro < 0) alvo.prejuizo++;
+        }
       }
     }
 
+    const formatar = (a: Acumulador) => ({
+      comPreco: a.comPreco,
+      comMargem: a.comMargem,
+      prejuizo: a.prejuizo,
+      lucroTotal: a.lucro,
+      custoTotal: a.custo,
+      // Ponderada pelo custo — a que responde quanto o capital rende.
+      margemPonderada: a.custo > 0 ? a.lucro / a.custo : null,
+      // Guardada junto para comparação: a margem do anúncio típico.
+      margemSimples: a.comMargem > 0 ? a.somaMargens / a.comMargem : null,
+    });
+
     return NextResponse.json({
       produtos: total,
-      comPreco,
-      comMargem,
-      prejuizo,
-      lucroTotal: somaLucro,
-      custoTotal: somaCusto,
-      // Ponderada pelo custo — a que responde quanto o capital rende.
-      margemPonderada: somaCusto > 0 ? somaLucro / somaCusto : null,
-      // Guardada junto para quem quiser comparar: a margem do anúncio típico.
-      margemSimples: comMargem > 0 ? somaMargens / comMargem : null,
+      geral: formatar(geral),
+      modalidades: Object.fromEntries(
+        [...porModalidade].map(([modalidade, a]) => [modalidade, formatar(a)])
+      ),
     });
   } catch (erro) {
     const mensagem = erro instanceof Error ? erro.message : String(erro);
