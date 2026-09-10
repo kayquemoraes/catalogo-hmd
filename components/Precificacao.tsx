@@ -239,9 +239,16 @@ export default function Precificacao() {
    * delas em vez de separar as duas, e cortaria a listra que atravessa a
    * linha, que é o que permite ler o nome à esquerda e acompanhar até a
    * direita sem perder a altura.
+   *
+   * As duas etiquetas são a mesma forma em dois pesos: contornada e
+   * preenchida. Cores diferentes fariam parecer categorias distintas, e uma
+   * delas soaria como aviso; assim leem-se como dois degraus do mesmo eixo,
+   * com o Premium — que é o degrau de cima — em cheio.
    */
   const etiquetaDaModalidade = (indice: number) =>
-    indice === 1 ? "bg-ink text-paper" : "bg-signal/15 text-signal";
+    indice === 1
+      ? "border-signal bg-signal text-white"
+      : "border-signal/40 bg-paper-raised text-signal";
 
   // --- cálculo -------------------------------------------------------------
 
@@ -626,10 +633,10 @@ export default function Precificacao() {
                   <th
                     key={m}
                     colSpan={7}
-                    className="bg-sage border-sage border-l-sage-deep sticky top-0 z-20 border-b border-l-2 px-2 py-2"
+                    className="bg-sage border-sage border-l-sage-deep sticky top-0 z-20 border-b border-l-2 px-2 py-1.5"
                   >
                     <span
-                      className={`${etiquetaDaModalidade(i)} inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wider uppercase`}
+                      className={`${etiquetaDaModalidade(i)} inline-flex items-center rounded-full border px-3 py-1 text-[11px] leading-none font-semibold tracking-[0.14em] uppercase`}
                     >
                       {ROTULO[m]}
                     </span>
