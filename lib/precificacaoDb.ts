@@ -158,33 +158,63 @@ async function migrar() {
  */
 async function migrarParaValoresPorConta() {
   // CREATE TABLE IF NOT EXISTS não altera tabela que já existe: num banco
-  // criado pela versão anterior as colunas novas não nascem sozinhas e
-  // precisam ser acrescentadas aqui.
+  // criado por uma versão anterior as colunas novas não nascem sozinhas.
   await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS antecipacao numeric(8,5) NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS embalagem numeric(12,4) NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS promocao numeric(8,5) NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE prec_anuncios ADD COLUMN IF NOT EXISTS promocao numeric(8,5) NOT NULL DEFAULT 0`;
-  await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS antecipacao_ativa boolean NOT NULL DEFAULT true`;
 
-  // Conta que estava com 0% passa a ter o interruptor desligado e guarda o
-  // percentual padrão: sem isso, religar a antecipação daria 0% e obrigaria a
-  // procurar a alíquota. O valor efetivo não muda — desligado, 0% é 0%.
+  await converterFormatoAntigo();
+
+  // Só depois de o formato antigo ter sido convertido e as colunas dele
+  // apagadas é que o interruptor de hoje é criado. Fazer isto antes seria
+  // criar uma coluna com o mesmo nome de uma que a conversão apaga — foi essa
+  // colisão que fez `antecipacao_ativa` nascer e morrer a cada inicialização.
+  const [jaExistia] = await sql<{ presente: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'prec_canais'
+         AND column_name = 'antecipacao_ativa'
+    ) AS presente
+  `;
+
+  await sql`ALTER TABLE prec_canais ADD COLUMN IF NOT EXISTS antecipacao_ativa boolean NOT NULL DEFAULT true`;
+  if (jaExistia?.presente) return;
+
+  // Só na criação da coluna: conta parada em 0% passa a guardar o percentual
+  // padrão com o interruptor desligado. O valor efetivo não muda — desligado,
+  // 0% é 0% —, mas religar deixa de dar zero e obrigar a procurar a alíquota.
+  //
+  // Rodar isto a cada inicialização reescreveria a escolha de quem
+  // deliberadamente deixasse 0% com o interruptor ligado.
   await sql`
     UPDATE prec_canais c
        SET antecipacao_ativa = false,
            antecipacao = coalesce((SELECT p.antecipacao FROM prec_parametros p WHERE p.id = 1), 0)
-     WHERE c.antecipacao = 0 AND c.antecipacao_ativa
+     WHERE c.antecipacao = 0
   `;
+}
 
-  const colunas = await sql<{ column_name: string }[]>`
-    SELECT column_name
-      FROM information_schema.columns
-     WHERE table_schema = 'public'
-       AND table_name = 'prec_canais'
-       AND column_name IN ('antecipacao_ativa', 'embalagem_ativa')
+/**
+ * Converte o formato em que a conta guardava "tem antecipação? sim/não" e o
+ * percentual morava numa tabela global.
+ *
+ * O gatilho é `embalagem_ativa`, e não `antecipacao_ativa`: aquela coluna some
+ * na conversão e nunca mais volta, enquanto esta voltou a existir com outro
+ * significado. Usar a coluna errada como marcador faria esta conversão rodar
+ * de novo em banco já convertido, desfazendo o que o usuário tivesse ajustado.
+ */
+async function converterFormatoAntigo() {
+  const [legado] = await sql<{ presente: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'prec_canais'
+         AND column_name = 'embalagem_ativa'
+    ) AS presente
   `;
-  const presentes = new Set(colunas.map((c) => c.column_name));
-  if (presentes.size === 0) return;
+  if (!legado?.presente) return;
 
   const [padroes] = await sql<{ antecipacao: string; embalagem: string }[]>`
     SELECT antecipacao, embalagem FROM prec_parametros WHERE id = 1
@@ -192,7 +222,15 @@ async function migrarParaValoresPorConta() {
   const antecipacaoPadrao = Number(padroes?.antecipacao ?? 0);
   const embalagemPadrao = Number(padroes?.embalagem ?? 0);
 
-  if (presentes.has("antecipacao_ativa")) {
+  const [antiga] = await sql<{ presente: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'prec_canais'
+         AND column_name = 'antecipacao_ativa'
+    ) AS presente
+  `;
+  if (antiga?.presente) {
     await sql`
       UPDATE prec_canais
          SET antecipacao = CASE WHEN antecipacao_ativa THEN ${antecipacaoPadrao}::numeric ELSE 0 END
@@ -200,22 +238,20 @@ async function migrarParaValoresPorConta() {
     await sql`ALTER TABLE prec_canais DROP COLUMN antecipacao_ativa`;
   }
 
-  if (presentes.has("embalagem_ativa")) {
-    await sql`
-      UPDATE prec_canais
-         SET embalagem = CASE WHEN embalagem_ativa THEN ${embalagemPadrao}::numeric ELSE 0 END
-    `;
-    await sql`ALTER TABLE prec_canais DROP COLUMN embalagem_ativa`;
+  await sql`
+    UPDATE prec_canais
+       SET embalagem = CASE WHEN embalagem_ativa THEN ${embalagemPadrao}::numeric ELSE 0 END
+  `;
+  await sql`ALTER TABLE prec_canais DROP COLUMN embalagem_ativa`;
 
-    // A promoção era da conta inteira; passa a ser de cada anúncio, herdando
-    // o valor que estava valendo até agora.
-    await sql`
-      UPDATE prec_anuncios a
-         SET promocao = c.promocao
-        FROM prec_canais c
-       WHERE c.id = a.canal_id
-    `;
-  }
+  // A promoção era da conta inteira; passa a ser de cada anúncio, herdando o
+  // valor que estava valendo até agora.
+  await sql`
+    UPDATE prec_anuncios a
+       SET promocao = c.promocao
+      FROM prec_canais c
+     WHERE c.id = a.canal_id
+  `;
 }
 
 /**
