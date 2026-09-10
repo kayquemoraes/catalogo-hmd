@@ -1,12 +1,13 @@
 import Link from "next/link";
 
-export type Secao = "inicio" | "catalogo" | "precificacao" | "contas";
+export type Secao = "inicio" | "catalogo" | "precificacao" | "contas" | "fretes";
 
 const ITENS: { id: Secao; rotulo: string; href: string }[] = [
   { id: "inicio", rotulo: "Início", href: "/" },
   { id: "catalogo", rotulo: "Catálogo", href: "/catalogo" },
   { id: "precificacao", rotulo: "Precificação", href: "/precificacao" },
   { id: "contas", rotulo: "Contas", href: "/contas" },
+  { id: "fretes", rotulo: "Fretes", href: "/fretes" },
 ];
 
 /**

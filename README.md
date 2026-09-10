@@ -56,6 +56,23 @@ O tipo — Mercado Livre ou Shopee — não é editável. Trocá-lo mudaria quan
 modalidades a conta tem e deixaria anúncios órfãos de uma modalidade que deixou
 de existir. Para mudar de marketplace, crie outra conta.
 
+### Fretes
+
+A tabela que o Mercado Livre cobra, cruzando faixa de peso com faixa de preço.
+Todos os valores são editáveis no lugar.
+
+O **simulador** no topo mostra a regra agindo: informe peso e preço e ele
+destaca na tabela a célula escolhida. Uma matriz de 232 números não explica
+sozinha por que um produto pagou o que pagou.
+
+O **reajuste** multiplica a tabela inteira de uma vez, que é como a
+transportadora anuncia mudança — corrigir 232 células à mão é onde se erra uma
+sem notar.
+
+**Editar faixas** abre os rótulos e os limites. Fica fechado por padrão: mexer
+ali muda em que célula cada produto cai, o que é mais consequente do que
+corrigir um valor.
+
 ### Precificação
 
 Escolha a conta no topo. A lista traz o catálogo e os anúncios juntos, com
@@ -202,6 +219,7 @@ app/
   catalogo/                   painel de leitura do Bling
   precificacao/               tabela de preços
   contas/                     cadastro das contas de anúncio
+  fretes/                     tabela de frete: consulta, edição e simulação
   entrar/                     tela de senha
   bling/authorize|callback/   ida e volta do OAuth
   api/                        status, leitura, produtos, precificação, login
@@ -210,6 +228,7 @@ components/
   Painel.tsx                  interface do catálogo
   Precificacao.tsx            interface da tabela de preços
   Contas.tsx                  interface das contas
+  Fretes.tsx                  interface da tabela de frete
 lib/
   precificacao.ts             o cálculo, em funções puras
   precificacaoDb.ts           tabelas prec_*, carga inicial e consultas

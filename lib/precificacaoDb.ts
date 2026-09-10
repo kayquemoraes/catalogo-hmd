@@ -516,6 +516,73 @@ export async function carregarTabelaFrete(): Promise<TabelaFrete> {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Tabela de frete
+// ---------------------------------------------------------------------------
+
+/** Um valor da matriz. Ordens são posições, não rótulos — ver carregarTabelaFrete. */
+export async function salvarValorFrete(
+  pesoOrdem: number,
+  precoOrdem: number,
+  valor: number
+): Promise<void> {
+  await ensureSchemaPrecificacao();
+  if (!Number.isFinite(valor) || valor < 0) throw new Error("O frete não pode ser negativo.");
+  const alterou = await sql`
+    UPDATE prec_frete
+       SET valor = ${valor}
+     WHERE peso_ordem = ${pesoOrdem} AND preco_ordem = ${precoOrdem}
+  `;
+  if (alterou.count === 0) throw new Error("Essa posição não existe na tabela de frete.");
+}
+
+/**
+ * Rótulo e teto de uma faixa. O teto nulo é da última faixa, que não tem —
+ * mexer nele em qualquer outra deixaria um intervalo sem dono.
+ */
+export async function salvarFaixa(
+  eixo: "peso" | "preco",
+  ordem: number,
+  campos: { rotulo?: string; ate?: number | null }
+): Promise<void> {
+  await ensureSchemaPrecificacao();
+
+  const tabela = eixo === "peso" ? sql`prec_faixas_peso` : sql`prec_faixas_preco`;
+  const [atual] = await sql<{ rotulo: string; ate: string | null }[]>`
+    SELECT rotulo, ate FROM ${tabela} WHERE ordem = ${ordem}
+  `;
+  if (!atual) throw new Error("Faixa não encontrada.");
+
+  const rotulo = (campos.rotulo ?? atual.rotulo).trim();
+  if (!rotulo) throw new Error("A faixa precisa de um nome.");
+
+  const ate =
+    campos.ate === undefined ? (atual.ate === null ? null : Number(atual.ate)) : campos.ate;
+  if (ate !== null && (!Number.isFinite(ate) || ate <= 0)) {
+    throw new Error("O limite da faixa precisa ser maior que zero.");
+  }
+
+  await sql`UPDATE ${tabela} SET rotulo = ${rotulo}, ate = ${ate} WHERE ordem = ${ordem}`;
+}
+
+/**
+ * Reajuste da tabela inteira. Transportadora reajusta tudo de uma vez, e
+ * corrigir 232 células à mão é onde se erra uma sem notar.
+ *
+ * O arredondamento é para centavos: a tabela é dinheiro, não fração.
+ */
+export async function reajustarFrete(percentual: number): Promise<number> {
+  await ensureSchemaPrecificacao();
+  if (!Number.isFinite(percentual) || percentual <= -100) {
+    throw new Error("Reajuste inválido.");
+  }
+  const fator = 1 + percentual / 100;
+  const alterou = await sql`
+    UPDATE prec_frete SET valor = round(valor * ${fator}::numeric, 2)
+  `;
+  return alterou.count;
+}
+
 export type Situacao = "todos" | "anunciados" | "disponiveis";
 
 /** Recorte por saldo. "Em falta" inclui saldo negativo, que o Bling devolve. */
