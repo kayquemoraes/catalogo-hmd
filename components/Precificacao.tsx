@@ -8,7 +8,7 @@ import {
   type TabelaFrete,
   type TipoCanal,
 } from "@/lib/precificacao";
-import { emPercentual, emReais, paraNumero } from "@/lib/numero";
+import { apenasNumero, emPercentual, emReais, paraNumero } from "@/lib/numero";
 
 type CanalSalvo = {
   id: number;
@@ -826,6 +826,10 @@ function Celulas({
   const mostra = resultado && !semPreco;
   const prejuizo = Boolean(mostra && temCusto && resultado!.lucro < 0);
 
+  /** Margem em pontos percentuais, ou nula quando não há como calcular. */
+  const margemAtual =
+    mostra && temCusto && resultado!.margem !== null ? resultado!.margem * 100 : null;
+
   // Campos secundários: discretos, para não competir com o que importa.
   const campo =
     "num border-sage w-full rounded-[4px] border px-1 py-1 text-center focus:border-signal disabled:cursor-not-allowed disabled:opacity-40";
@@ -846,6 +850,7 @@ function Celulas({
         <input
           type="text"
           inputMode="decimal"
+          onInput={(e) => apenasNumero(e.currentTarget)}
           title="Percentual cobrado pelo marketplace"
           defaultValue={emPercentual(anuncio.comissao * 100, 3)}
           key={`c-${anuncio.anuncioId}-${anuncio.comissao}`}
@@ -864,6 +869,7 @@ function Celulas({
         <input
           type="text"
           inputMode="decimal"
+          onInput={(e) => apenasNumero(e.currentTarget)}
           title="Desconto promocional deste anúncio"
           defaultValue={emPercentual(anuncio.promocao * 100, 3)}
           key={`promo-${anuncio.anuncioId}-${anuncio.promocao}`}
@@ -882,6 +888,7 @@ function Celulas({
         <input
           type="text"
           inputMode="decimal"
+          onInput={(e) => apenasNumero(e.currentTarget)}
           placeholder="—"
           title="Preço do anúncio"
           defaultValue={anuncio.preco > 0 ? emReais(anuncio.preco) : ""}
@@ -911,6 +918,7 @@ function Celulas({
         <input
           type="text"
           inputMode="decimal"
+          onInput={(e) => apenasNumero(e.currentTarget)}
           placeholder="—"
           disabled={!temCusto}
           title={
@@ -918,21 +926,31 @@ function Celulas({
               ? "Digite a margem que você quer e o preço se ajusta"
               : "Sem custo do produto não há como calcular a margem"
           }
-          defaultValue={
-            mostra && temCusto && resultado!.margem !== null
-              ? emPercentual(resultado!.margem * 100, 1)
-              : ""
-          }
+          // Parado mostra "72,9%", para ninguém ler o número como reais; ao
+          // receber o foco, o símbolo sai e sobra só o que se digita.
+          defaultValue={margemAtual === null ? "" : `${emPercentual(margemAtual, 1)}%`}
           key={`m-${anuncio.anuncioId}-${anuncio.preco}-${anuncio.comissao}-${anuncio.promocao}`}
+          onFocus={(e) => {
+            e.currentTarget.value = e.currentTarget.value.replace("%", "").trim();
+            e.currentTarget.select();
+          }}
           onBlur={(e) => {
-            const n = paraNumero(e.target.value);
-            if (n === null) return;
-            const atual = mostra && resultado!.margem !== null ? resultado!.margem * 100 : null;
-            if (atual !== null && Math.abs(n - atual) < 0.05) return;
-            onMargem(n / 100);
+            const n = paraNumero(e.currentTarget.value);
+            const mudou = n !== null && (margemAtual === null || Math.abs(n - margemAtual) >= 0.05);
+            if (mudou) {
+              onMargem(n / 100);
+              return;
+            }
+            // Sem mudança o campo não é remontado, então o símbolo volta aqui.
+            e.currentTarget.value = margemAtual === null ? "" : `${emPercentual(margemAtual, 1)}%`;
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              e.currentTarget.value =
+                margemAtual === null ? "" : `${emPercentual(margemAtual, 1)}%`;
+              e.currentTarget.blur();
+            }
           }}
           className={`${destaque} ${prejuizo ? "border-alert/50 text-alert" : ""}`}
         />

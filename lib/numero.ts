@@ -57,3 +57,30 @@ export function paraNumero(texto: string): number | null {
   if (!Number.isFinite(n)) return null;
   return negativo ? -n : n;
 }
+
+/**
+ * Impede que letras entrem num campo numérico, enquanto se digita.
+ *
+ * Os campos são de texto — e não `type="number"` — porque precisam aceitar
+ * vírgula decimal e mostrar "1.000,00", coisas que o campo numérico do
+ * navegador não faz em português. Em troca, a filtragem fica por conta nossa.
+ *
+ * O cursor é reposicionado contando quantos caracteres sobreviveram antes
+ * dele; sem isso, colar um texto sujo jogaria o cursor para o fim.
+ */
+const PROIBIDO = /[^\d.,-]/g;
+
+/** A parte testável: o que sobra de um texto num campo numérico. */
+export function limparNumerico(texto: string): string {
+  return texto.replace(PROIBIDO, "");
+}
+
+export function apenasNumero(el: HTMLInputElement): void {
+  const limpo = limparNumerico(el.value);
+  if (limpo === el.value) return;
+
+  const antes = el.value.slice(0, el.selectionStart ?? el.value.length);
+  const posicao = limparNumerico(antes).length;
+  el.value = limpo;
+  el.setSelectionRange(posicao, posicao);
+}

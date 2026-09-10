@@ -16,7 +16,7 @@ import {
 } from "../lib/precificacao.ts";
 import { TABELA_FRETE_INICIAL as FRETE } from "../lib/freteInicial.ts";
 import { enderecoDaAplicacao, enderecoDeCallback } from "../lib/appUrl.ts";
-import { emPercentual, emReais, paraNumero } from "../lib/numero.ts";
+import { emPercentual, emReais, limparNumerico, paraNumero } from "../lib/numero.ts";
 
 const ML: Canal = {
   tipo: "ml",
@@ -364,6 +364,21 @@ for (const [texto, esperado] of idaEVolta) {
   const ok = volta === esperado;
   if (!ok) falhas++;
   console.log(`  ${ok ? "✓" : "✗"} escreve "${texto}" e lê de volta ${volta}`);
+}
+
+const DIGITACAO: [string, string][] = [
+  ["abc", ""],
+  ["12abc34", "1234"],
+  ["R$ 1.999,90", "1.999,90"],
+  ["72,9%", "72,9"],
+  ["  1 0 0  ", "100"],
+  ["1.000,00", "1.000,00"],
+];
+for (const [entrada, esperado] of DIGITACAO) {
+  const obtido = limparNumerico(entrada);
+  const ok = obtido === esperado;
+  if (!ok) falhas++;
+  console.log(`  ${ok ? "✓" : "✗"} campo numérico recusa letras: "${entrada}" -> "${obtido}"`);
 }
 
 console.log(

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { TipoCanal } from "@/lib/precificacao";
-import { emPercentual, paraNumero } from "@/lib/numero";
+import { apenasNumero, emPercentual, paraNumero } from "@/lib/numero";
 
 type Conta = {
   id: number;
@@ -339,6 +339,7 @@ function Campo({
         <input
           type="text"
           inputMode="decimal"
+          onInput={(e) => apenasNumero(e.currentTarget)}
           defaultValue={emPercentual(valor, 4)}
           onBlur={(e) => {
             const n = paraNumero(e.target.value);
