@@ -49,6 +49,28 @@
     outline-offset: 2px;
   }
 
+  /* O Tailwind 4 deixa <button> com o cursor de seta, e o projeto usa botão
+     para quase todo controle — filtros, interruptores, remover, paginação.
+     Uma regra aqui vale para todos, inclusive os que ainda vão existir. */
+  button,
+  select,
+  summary,
+  [role="button"],
+  input[type="checkbox"],
+  input[type="radio"],
+  label:has(> input[type="checkbox"]),
+  label:has(> input[type="radio"]) {
+    cursor: pointer;
+  }
+
+  /* Desabilitado não é clicável: a seta barrada diz isso antes do clique. */
+  button:disabled,
+  select:disabled,
+  input:disabled,
+  label:has(> input:disabled) {
+    cursor: not-allowed;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
