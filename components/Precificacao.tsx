@@ -45,6 +45,19 @@ type Linha = {
   anuncios: AnuncioLinha[];
 };
 
+type Resumo = {
+  produtos: number;
+  comPreco: number;
+  comMargem: number;
+  prejuizo: number;
+  lucroTotal: number;
+  custoTotal: number;
+  /** Lucro total dividido pelo custo total: quanto o capital rende. */
+  margemPonderada: number | null;
+  /** Média simples das margens: a do anúncio típico. */
+  margemSimples: number | null;
+};
+
 type Contexto = {
   canais: CanalSalvo[];
   canalAtual: number | null;
@@ -82,9 +95,10 @@ export default function Precificacao() {
   const [pagina, setPagina] = useState(1);
   const [porPagina, setPorPagina] = useState(50);
 
-  const [busca, setBusca] = useState("");
-  const [filtro, setFiltro] = useState("");
+  const [busca, setBusca] = useState({ sku: "", nome: "", marca: "" });
+  const [filtro, setFiltro] = useState({ sku: "", nome: "", marca: "" });
   const [situacao, setSituacao] = useState<Situacao>("todos");
+  const [resumo, setResumo] = useState<Resumo | null>(null);
 
   const [carregandoContexto, setCarregandoContexto] = useState(true);
   const [carregandoLinhas, setCarregandoLinhas] = useState(false);
@@ -119,15 +133,23 @@ export default function Precificacao() {
     return () => clearTimeout(t);
   }, [busca]);
 
+  /** Os filtros na forma que as duas rotas esperam. */
+  const parametros = useMemo(() => {
+    const p = new URLSearchParams({ situacao });
+    if (filtro.sku) p.set("sku", filtro.sku);
+    if (filtro.nome) p.set("nome", filtro.nome);
+    if (filtro.marca) p.set("marca", filtro.marca);
+    return p.toString();
+  }, [filtro, situacao]);
+
   const buscarLinhas = useCallback(async () => {
     if (!canalId) return;
     const meu = ++pedido.current;
     setCarregandoLinhas(true);
     try {
-      const url =
-        `/api/precificacao/linhas?canal=${canalId}` +
-        `&q=${encodeURIComponent(filtro)}&situacao=${situacao}&pagina=${pagina}`;
-      const r = await fetch(url);
+      const r = await fetch(
+        `/api/precificacao/linhas?canal=${canalId}&${parametros}&pagina=${pagina}`
+      );
       const dados = await r.json();
       // Uma resposta antiga não pode sobrescrever uma busca mais recente.
       if (meu !== pedido.current) return;
@@ -140,11 +162,31 @@ export default function Precificacao() {
     } finally {
       if (meu === pedido.current) setCarregandoLinhas(false);
     }
-  }, [canalId, filtro, situacao, pagina]);
+  }, [canalId, parametros, pagina]);
 
   useEffect(() => {
     void buscarLinhas();
   }, [buscarLinhas]);
+
+  /**
+   * O resumo é uma consulta à parte porque percorre TODOS os anúncios que
+   * casam com o filtro, não só a página. Recarrega junto com a lista e a cada
+   * salvamento, para os cartões não descreverem um estado que já mudou.
+   */
+  const buscarResumo = useCallback(async () => {
+    if (!canalId) return;
+    try {
+      const r = await fetch(`/api/precificacao/resumo?canal=${canalId}&${parametros}`);
+      const dados = await r.json();
+      if (r.ok) setResumo(dados);
+    } catch {
+      /* os cartões são acessórios: falhar aqui não derruba a tela */
+    }
+  }, [canalId, parametros]);
+
+  useEffect(() => {
+    void buscarResumo();
+  }, [buscarResumo]);
 
   const canal = useMemo(
     () => contexto?.canais.find((c) => c.id === canalId) ?? null,
@@ -224,6 +266,7 @@ export default function Precificacao() {
         });
         if (!r.ok) throw new Error((await r.json()).erro ?? "Não foi possível salvar.");
         setErro(null);
+        void buscarResumo();
       } catch (e) {
         setErro(e instanceof Error ? e.message : String(e));
         void buscarLinhas();
@@ -231,7 +274,7 @@ export default function Precificacao() {
         setSalvando((n) => n - 1);
       }
     },
-    [buscarLinhas]
+    [buscarLinhas, buscarResumo]
   );
 
   const aplicarMargem = useCallback(
@@ -315,40 +358,6 @@ export default function Precificacao() {
 
   // --- resumo da página ----------------------------------------------------
 
-  /**
-   * Resumo da página em exibição — não da conta inteira, já que a lista é
-   * paginada.
-   *
-   * `comMargem` é contado à parte de `comPreco`: um anúncio de produto sem
-   * custo cadastrado tem preço mas não tem margem, e somá-lo ao divisor o
-   * faria contar como margem zero, puxando a média para baixo. Margem
-   * desconhecida não é margem nula.
-   */
-  const resumo = useMemo(() => {
-    let comPreco = 0;
-    let comMargem = 0;
-    let prejuizo = 0;
-    let soma = 0;
-    for (const linha of linhas) {
-      for (const anuncio of linha.anuncios) {
-        if (anuncio.preco <= 0) continue;
-        const r = calcularAnuncio(linha, anuncio);
-        if (!r) continue;
-        comPreco++;
-        if (r.margem === null) continue;
-        comMargem++;
-        soma += r.margem;
-        if (r.lucro < 0) prejuizo++;
-      }
-    }
-    return {
-      comPreco,
-      comMargem,
-      prejuizo,
-      margemMedia: comMargem ? soma / comMargem : null,
-    };
-  }, [linhas, calcularAnuncio]);
-
   const ultimaPagina = Math.max(1, Math.ceil(total / porPagina));
 
   // --- tela ----------------------------------------------------------------
@@ -387,26 +396,32 @@ export default function Precificacao() {
             <div className="flex gap-3">
               <Indicador
                 rotulo="Margem média"
-                valor={resumo.margemMedia === null ? "—" : pct(resumo.margemMedia)}
+                valor={
+                  resumo?.margemPonderada == null ? "—" : pct(resumo.margemPonderada)
+                }
                 nota={
-                  resumo.margemMedia === null
-                    ? resumo.comPreco > 0
-                      ? `${inteiro.format(resumo.comPreco)} com preço, nenhum com custo`
-                      : "nesta página"
-                    : `${inteiro.format(resumo.comMargem)} anúncios desta página`
+                  !resumo
+                    ? "carregando…"
+                    : resumo.margemPonderada === null
+                      ? resumo.comPreco > 0
+                        ? "sem custo dos produtos"
+                        : "nenhum anúncio com preço"
+                      : `${inteiro.format(resumo.comMargem)} anúncios · ponderada pelo custo`
                 }
               />
               <Indicador
                 rotulo="No prejuízo"
-                valor={inteiro.format(resumo.prejuizo)}
+                valor={resumo ? inteiro.format(resumo.prejuizo) : "—"}
                 nota={
-                  resumo.prejuizo > 0
-                    ? "vendem abaixo do custo"
-                    : resumo.comMargem > 0
-                      ? "nenhum nesta página"
-                      : "sem custo para comparar"
+                  !resumo
+                    ? "carregando…"
+                    : resumo.prejuizo > 0
+                      ? "vendem abaixo do custo"
+                      : resumo.comMargem > 0
+                        ? "nenhum no filtro atual"
+                        : "sem custo para comparar"
                 }
-                alerta={resumo.prejuizo > 0}
+                alerta={Boolean(resumo && resumo.prejuizo > 0)}
               />
             </div>
 
@@ -462,11 +477,21 @@ export default function Precificacao() {
 
         {/* Barra de filtros */}
         <div className="border-sage bg-paper-raised mb-4 flex flex-wrap items-center gap-4 rounded-[6px] border px-4 py-3">
-          <input
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome, SKU ou marca…"
-            className="border-sage min-w-56 flex-1 rounded-[6px] border px-3 py-2 text-sm"
+          <CampoDeBusca
+            rotulo="SKU"
+            valor={busca.sku}
+            onMudar={(v) => setBusca((b) => ({ ...b, sku: v }))}
+          />
+          <CampoDeBusca
+            rotulo="Nome"
+            valor={busca.nome}
+            onMudar={(v) => setBusca((b) => ({ ...b, nome: v }))}
+            largo
+          />
+          <CampoDeBusca
+            rotulo="Marca"
+            valor={busca.marca}
+            onMudar={(v) => setBusca((b) => ({ ...b, marca: v }))}
           />
 
           <div className="border-sage flex overflow-hidden rounded-[6px] border" role="group">
@@ -692,6 +717,32 @@ export default function Precificacao() {
  * onde tirar o preço. O preço, esse, é sempre editável: cadastrar um valor não
  * depende de o catálogo já ter sido lido.
  */
+/** Um campo de busca rotulado. Os três se somam: preencher dois restringe mais. */
+function CampoDeBusca({
+  rotulo,
+  valor,
+  onMudar,
+  largo,
+}: {
+  rotulo: string;
+  valor: string;
+  onMudar: (valor: string) => void;
+  largo?: boolean;
+}) {
+  return (
+    <label className={`flex items-center gap-2 text-sm ${largo ? "min-w-48 flex-1" : ""}`}>
+      <span className="text-muted text-xs tracking-wide uppercase">{rotulo}</span>
+      <input
+        value={valor}
+        onChange={(e) => onMudar(e.target.value)}
+        className={`border-sage focus:border-signal rounded-[6px] border px-2.5 py-1.5 text-sm ${
+          largo ? "w-full" : "w-32"
+        }`}
+      />
+    </label>
+  );
+}
+
 /** Um par rótulo/valor da conta, no cabeçalho escuro. */
 function DadoDaConta({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (

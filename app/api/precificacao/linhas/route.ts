@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { temSessao } from "@/lib/auth";
-import { listarLinhas, type Situacao } from "@/lib/precificacaoDb";
+import { listarLinhas } from "@/lib/precificacaoDb";
+import { filtrosDaUrl } from "@/lib/filtros";
 
 export const dynamic = "force-dynamic";
-
-const SITUACOES: Situacao[] = ["todos", "anunciados", "disponiveis"];
 
 /** A lista da tela, já filtrada e paginada no banco. */
 export async function GET(req: Request) {
@@ -17,12 +16,8 @@ export async function GET(req: Request) {
     const canalId = Number(searchParams.get("canal"));
     if (!canalId) throw new Error("Informe o canal.");
 
-    const pedida = searchParams.get("situacao") as Situacao | null;
-    const situacao = pedida && SITUACOES.includes(pedida) ? pedida : "todos";
-
     const dados = await listarLinhas(canalId, {
-      busca: searchParams.get("q") ?? "",
-      situacao,
+      ...filtrosDaUrl(searchParams),
       pagina: Number(searchParams.get("pagina") ?? 1),
     });
 

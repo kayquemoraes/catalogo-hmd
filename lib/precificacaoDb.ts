@@ -475,18 +475,36 @@ export type LinhaTabela = {
  * que não existem mais no catálogo (kits, itens descontinuados) e eles
  * precisam continuar visíveis, marcados, em vez de sumir sem aviso.
  */
+export type Filtros = {
+  sku?: string;
+  nome?: string;
+  marca?: string;
+  situacao?: Situacao;
+};
+
+/** "%termo%" ou "%" quando vazio — "%" casa com tudo, dispensando um SQL variável. */
+function curinga(termo: string | undefined): string {
+  const limpo = (termo ?? "").trim().toLowerCase();
+  return limpo ? `%${limpo}%` : "%";
+}
+
 export async function listarLinhas(
   canalId: number,
-  opcoes: { busca?: string; situacao?: Situacao; pagina?: number; porPagina?: number } = {}
+  opcoes: Filtros & { pagina?: number; porPagina?: number; todas?: boolean } = {}
 ): Promise<{ linhas: LinhaTabela[]; total: number; pagina: number; porPagina: number }> {
   await ensureSchemaPrecificacao();
 
-  const termo = (opcoes.busca ?? "").trim().toLowerCase();
   const situacao = opcoes.situacao ?? "todos";
   const porPagina = Math.min(200, Math.max(10, opcoes.porPagina ?? 50));
   const pagina = Math.max(1, opcoes.pagina ?? 1);
-  const offset = (pagina - 1) * porPagina;
-  const filtro = `%${termo}%`;
+  const offset = opcoes.todas ? 0 : (pagina - 1) * porPagina;
+  // O resumo precisa de todas as linhas que casam com o filtro, não só da
+  // página; o teto existe para nenhuma consulta virar ilimitada por acidente.
+  const limite = opcoes.todas ? 20000 : porPagina;
+
+  const fSku = curinga(opcoes.sku);
+  const fNome = curinga(opcoes.nome);
+  const fMarca = curinga(opcoes.marca);
 
   const base = sql`
     SELECT b.sku,
@@ -525,9 +543,13 @@ export async function listarLinhas(
         ? sql`WHERE NOT anunciado`
         : sql`WHERE true`;
 
-  const condBusca = termo
-    ? sql`AND (lower(nome) LIKE ${filtro} OR lower(sku) LIKE ${filtro} OR lower(coalesce(marca, '')) LIKE ${filtro})`
-    : sql``;
+  // Os três campos são independentes e se somam: preencher dois restringe
+  // mais que preencher um. Vazio vira "%", que casa com tudo.
+  const condBusca = sql`
+    AND lower(sku) LIKE ${fSku}
+    AND lower(nome) LIKE ${fNome}
+    AND lower(coalesce(marca, '')) LIKE ${fMarca}
+  `;
 
   const linhas = await sql<
     {
@@ -545,7 +567,7 @@ export async function listarLinhas(
     SELECT * FROM tudo
     ${condSituacao} ${condBusca}
     ORDER BY anunciado DESC, nome
-    LIMIT ${porPagina} OFFSET ${offset}
+    LIMIT ${limite} OFFSET ${offset}
   `;
 
   const [{ total }] = await sql<{ total: number }[]>`
