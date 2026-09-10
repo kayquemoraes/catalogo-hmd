@@ -534,7 +534,7 @@ export default function Precificacao() {
 
             <thead>
               <tr>
-                <th className="bg-sage border-sage sticky top-0 z-20 border-r border-b px-3 py-2.5 text-left font-semibold">
+                <th className="bg-sage border-sage border-r-sage-deep/60 sticky top-0 z-20 border-r border-b px-3 py-2.5 text-left font-semibold">
                   Produto
                 </th>
                 <th className="bg-sage border-sage sticky top-0 z-20 border-b px-1 py-2.5 font-semibold">
@@ -547,7 +547,7 @@ export default function Precificacao() {
                   <th
                     key={m}
                     colSpan={7}
-                    className="bg-sage border-sage border-l-ink-line/40 sticky top-0 z-20 border-b border-l-2 px-2 py-2"
+                    className="bg-sage border-sage border-l-sage-deep sticky top-0 z-20 border-b border-l-2 px-2 py-2"
                   >
                     <span
                       className={`${etiquetaDaModalidade(i)} inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wider uppercase`}
@@ -560,7 +560,7 @@ export default function Precificacao() {
               </tr>
 
               <tr>
-                <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-r border-b px-3 py-1.5 text-left font-normal">
+                <th className="bg-paper-raised border-sage text-muted border-r-sage-deep/60 sticky top-[36px] z-20 border-r border-b px-3 py-1.5 text-left font-normal">
                   SKU · marca
                 </th>
                 <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal">
@@ -575,7 +575,7 @@ export default function Precificacao() {
                     "bg-signal-soft border-sage text-signal sticky top-[36px] z-20 border-b px-1 py-1.5 font-semibold";
                   return (
                     <Fragment key={m}>
-                      <th className={`${secundaria} border-l-ink-line/40 border-l-2`}>% taxa</th>
+                      <th className={`${secundaria} border-l-sage-deep border-l-2`}>% taxa</th>
                       <th className={secundaria}>% promo</th>
                       <th className={chave}>Preço</th>
                       <th className={secundaria}>Frete</th>
@@ -600,7 +600,7 @@ export default function Precificacao() {
 
               {linhas.map((linha) => (
                 <tr key={linha.sku} className="border-sage/40 even:bg-sage/25 hover:bg-signal-soft! border-b text-center">
-                  <td className="border-sage/40 border-r px-3 py-1.5 text-left">
+                  <td className="border-r-sage-deep/60 border-r px-3 py-1.5 text-left">
                     <span className="block truncate font-medium" title={linha.nome}>
                       {linha.nome}
                     </span>
@@ -635,7 +635,7 @@ export default function Precificacao() {
                             <td
                               key={m}
                               colSpan={7}
-                              className="border-l-ink-line/40 text-muted border-l-2 px-2 py-1.5"
+                              className="border-l-sage-deep text-muted border-l-2 px-2 py-1.5"
                             >
                               sem anúncio
                             </td>
@@ -842,7 +842,7 @@ function Celulas({
 
   return (
     <>
-      <td className={`${celula} border-l-ink-line/40 border-l-2`}>
+      <td className={`${celula} border-l-sage-deep border-l-2`}>
         <input
           type="text"
           inputMode="decimal"
