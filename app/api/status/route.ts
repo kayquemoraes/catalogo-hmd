@@ -3,11 +3,6 @@ import { temSessao } from "@/lib/auth";
 import { situacaoAtual } from "@/lib/sync";
 import { contaConectada } from "@/lib/bling";
 import { sql, ensureSchema } from "@/lib/db";
-import {
-  planilhaConfigurada,
-  planilhaEscritaEm,
-  urlDaPlanilha,
-} from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +13,12 @@ export async function GET() {
 
   await ensureSchema();
 
-  const [leitura, conectado, [contagem], planilhaEm] = await Promise.all([
+  const [leitura, conectado, [contagem]] = await Promise.all([
     situacaoAtual(),
     contaConectada(),
     sql<{ total: number; atualizado: Date | null }[]>`
       SELECT count(*)::int AS total, max(visto_em) AS atualizado FROM produtos
     `,
-    planilhaConfigurada() ? planilhaEscritaEm() : Promise.resolve(null),
   ]);
 
   return NextResponse.json({
@@ -32,10 +26,5 @@ export async function GET() {
     leitura,
     total: contagem?.total ?? 0,
     atualizadoEm: contagem?.atualizado?.toISOString() ?? null,
-    planilha: {
-      configurada: planilhaConfigurada(),
-      escritaEm: planilhaEm,
-      url: urlDaPlanilha(),
-    },
   });
 }

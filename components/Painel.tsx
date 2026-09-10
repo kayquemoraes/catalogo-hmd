@@ -17,11 +17,6 @@ type Status = {
   leitura: Leitura;
   total: number;
   atualizadoEm: string | null;
-  planilha: {
-    configurada: boolean;
-    escritaEm: string | null;
-    url: string | null;
-  };
 };
 
 type Produto = {
@@ -158,25 +153,6 @@ export default function Painel() {
                     ? `Lido do Bling ${desde(status.atualizadoEm)}`
                     : "Conecte a conta do Bling para começar"}
               </p>
-
-              {status?.planilha.configurada && !rodando && (
-                <p className="text-sage-deep mt-1 text-sm">
-                  Planilha escrita {desde(status.planilha.escritaEm)}
-                  {status.planilha.url && (
-                    <>
-                      {" · "}
-                      <a
-                        href={status.planilha.url}
-                        target="_blank"
-                        rel="noopener"
-                        className="text-paper underline underline-offset-4"
-                      >
-                        Abrir planilha
-                      </a>
-                    </>
-                  )}
-                </p>
-              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-3 pb-1">

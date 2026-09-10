@@ -1,6 +1,5 @@
 import { sql, ensureSchema } from "./db";
 import { listarProdutos, pesoLiquido, type ProdutoLista } from "./bling";
-import { escreverPlanilha, planilhaConfigurada } from "./sheets";
 
 /**
  * A leitura roda como uma tarefa contínua dentro do processo do servidor.
@@ -81,29 +80,13 @@ async function executar(leituraId: number) {
       DELETE FROM produtos WHERE visto_em < ${corte}
     `;
 
-    // A planilha é o destino final: escrever nela faz parte da leitura.
-    // Uma falha aqui não invalida os dados já guardados, então a leitura
-    // continua marcada como concluída e o aviso aparece no painel.
-    let avisoPlanilha: string | null = null;
-
-    if (planilhaConfigurada()) {
-      try {
-        const { linhas } = await escreverPlanilha();
-        console.log(`Planilha atualizada com ${linhas} linhas.`);
-      } catch (erro) {
-        avisoPlanilha =
-          erro instanceof Error ? erro.message : "Falha ao escrever na planilha.";
-        console.error("Planilha não foi atualizada:", avisoPlanilha);
-      }
-    }
-
     await sql`
       UPDATE leituras
          SET situacao = 'concluida',
              encerrada_em = now(),
              processados = ${processados},
              pagina = ${pagina},
-             erro = ${avisoPlanilha}
+             erro = ${null}
        WHERE id = ${leituraId}
     `;
 
