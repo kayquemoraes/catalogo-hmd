@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { temSessao } from "@/lib/auth";
-import { comFaixaAdicionada, comFaixaAlterada, semFaixa } from "@/lib/precificacao";
+import {
+  comFaixaAdicionada,
+  comFaixaAlterada,
+  comFaixaFinalAdicionada,
+  semFaixa,
+} from "@/lib/precificacao";
 import {
   carregarTabelaFrete,
   salvarTabelaFrete,
@@ -81,7 +86,14 @@ export async function PATCH(req: Request) {
   }
 }
 
-/** Acrescenta uma faixa, que entra na posição certa pelo teto. */
+/**
+ * Acrescenta uma faixa.
+ *
+ * Com `final`, a faixa nasce no topo e sem teto, e a que era aberta ganha o
+ * limite informado — estender o topo da tabela são duas mudanças que precisam
+ * acontecer juntas. Sem `final`, a faixa tem teto próprio e entra na posição
+ * que esse teto determina.
+ */
 export async function POST(req: Request) {
   const barrado = await protegido();
   if (barrado) return barrado;
@@ -89,12 +101,16 @@ export async function POST(req: Request) {
   try {
     const corpo = await req.json();
     const eixo = eixoDe(corpo.eixo);
+    const rotulo = String(corpo.rotulo ?? "");
 
     const atual = await carregarTabelaFrete();
-    const nova = comFaixaAdicionada(atual, eixo, {
-      rotulo: String(corpo.rotulo ?? ""),
-      ate: Number(corpo.ate),
-    });
+    const nova = corpo.final
+      ? comFaixaFinalAdicionada(atual, eixo, {
+          rotulo,
+          tetoAnterior: Number(corpo.ate),
+        })
+      : comFaixaAdicionada(atual, eixo, { rotulo, ate: Number(corpo.ate) });
+
     await salvarTabelaFrete(nova);
     return NextResponse.json({ ok: true, tabela: nova });
   } catch (erro) {

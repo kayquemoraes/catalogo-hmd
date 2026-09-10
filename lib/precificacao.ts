@@ -293,6 +293,61 @@ export function comFaixaAlterada(
 }
 
 /**
+ * Acrescenta uma faixa no topo, que passa a ser a que recolhe o resto.
+ *
+ * Estender o topo da tabela são duas mudanças ao mesmo tempo: a faixa hoje
+ * aberta ganha um teto, e uma nova faixa aberta nasce acima dela. Feita só a
+ * primeira metade, o sistema passaria a ter um limite máximo e produtos acima
+ * dele não achariam linha; feita só a segunda, haveria duas faixas sem teto e a
+ * segunda jamais seria alcançada.
+ *
+ * `tetoAnterior` é onde a faixa que era aberta passa a terminar — é o número
+ * que separa as duas.
+ */
+export function comFaixaFinalAdicionada(
+  tabela: TabelaFrete,
+  eixo: "peso" | "preco",
+  nova: { rotulo: string; tetoAnterior: number }
+): TabelaFrete {
+  const rotulo = nova.rotulo.trim();
+  if (!rotulo) throw new Error("A faixa precisa de um nome.");
+  if (!Number.isFinite(nova.tetoAnterior) || nova.tetoAnterior <= 0) {
+    throw new Error("O limite precisa ser maior que zero.");
+  }
+
+  const atuais = eixoDe(tabela, eixo);
+  const penultimo = atuais[atuais.length - 2]?.ate ?? 0;
+  if (nova.tetoAnterior <= penultimo) {
+    throw new Error(
+      `A última faixa precisa terminar acima de ${penultimo}, que é o teto da anterior.`
+    );
+  }
+
+  const faixas = atuais.map((f, i) =>
+    i === atuais.length - 1 ? { ...f, ate: nova.tetoAnterior } : f
+  );
+  faixas.push({ rotulo, ate: null });
+
+  // A faixa nova cobre o que a antiga faixa aberta cobria acima do novo teto,
+  // então herda os valores dela — ninguém muda de preço até alguém editar.
+  const ultima = atuais.length - 1;
+
+  if (eixo === "peso") {
+    return {
+      ...tabela,
+      faixasPeso: faixas,
+      valores: [...tabela.valores, [...(tabela.valores[ultima] ?? [])]],
+    };
+  }
+
+  return {
+    ...tabela,
+    faixasPreco: faixas,
+    valores: tabela.valores.map((linha) => [...linha, linha[ultima] ?? 0]),
+  };
+}
+
+/**
  * Remove uma faixa. O intervalo dela passa a ser coberto pela faixa seguinte,
  * que é o que já acontecia antes de ela existir.
  *

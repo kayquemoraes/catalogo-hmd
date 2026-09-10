@@ -121,8 +121,12 @@ export default function Fretes() {
     campos: { rotulo?: string; ate?: number }
   ) => operarFaixa("PATCH", { tipo: "faixa", eixo, indice, ...campos });
 
-  const adicionarFaixa = (eixo: "peso" | "preco", rotulo: string, ate: number) =>
-    operarFaixa("POST", { eixo, rotulo, ate });
+  const adicionarFaixa = (
+    eixo: "peso" | "preco",
+    rotulo: string,
+    ate: number,
+    final: boolean
+  ) => operarFaixa("POST", { eixo, rotulo, ate, final });
 
   const removerFaixa = (eixo: "peso" | "preco", indice: number) =>
     operarFaixa("DELETE", { eixo, indice });
@@ -308,7 +312,12 @@ function EditorDeFaixas({
     indice: number,
     campos: { rotulo?: string; ate?: number }
   ) => Promise<boolean>;
-  onAdicionar: (eixo: "peso" | "preco", rotulo: string, ate: number) => Promise<boolean>;
+  onAdicionar: (
+    eixo: "peso" | "preco",
+    rotulo: string,
+    ate: number,
+    final: boolean
+  ) => Promise<boolean>;
   onRemover: (eixo: "peso" | "preco", indice: number) => Promise<boolean>;
 }) {
   return (
@@ -328,7 +337,7 @@ function EditorDeFaixas({
           exemplo="De 2 a 3 kg"
           faixas={tabela.faixasPeso}
           onSalvar={(i, campos) => onSalvar("peso", i, campos)}
-          onAdicionar={(rotulo, ate) => onAdicionar("peso", rotulo, ate)}
+          onAdicionar={(rotulo, ate, final) => onAdicionar("peso", rotulo, ate, final)}
           onRemover={(i) => onRemover("peso", i)}
         />
         <ListaDeFaixas
@@ -337,7 +346,7 @@ function EditorDeFaixas({
           exemplo="R$ 200 a R$ 249,99"
           faixas={tabela.faixasPreco}
           onSalvar={(i, campos) => onSalvar("preco", i, campos)}
-          onAdicionar={(rotulo, ate) => onAdicionar("preco", rotulo, ate)}
+          onAdicionar={(rotulo, ate, final) => onAdicionar("preco", rotulo, ate, final)}
           onRemover={(i) => onRemover("preco", i)}
         />
       </div>
@@ -359,15 +368,17 @@ function ListaDeFaixas({
   exemplo: string;
   faixas: { rotulo: string; ate: number | null }[];
   onSalvar: (indice: number, campos: { rotulo?: string; ate?: number }) => Promise<boolean>;
-  onAdicionar: (rotulo: string, ate: number) => Promise<boolean>;
+  onAdicionar: (rotulo: string, ate: number, final: boolean) => Promise<boolean>;
   onRemover: (indice: number) => Promise<boolean>;
 }) {
   const [confirmando, setConfirmando] = useState<number | null>(null);
   const [novoRotulo, setNovoRotulo] = useState("");
   const [novoAte, setNovoAte] = useState("");
+  const [novaFinal, setNovaFinal] = useState(false);
 
   const ate = paraNumero(novoAte);
   const podeAdicionar = novoRotulo.trim() !== "" && ate !== null && ate > 0;
+  const rotuloAnterior = faixas[faixas.length - 1]?.rotulo ?? "";
 
   const texto = (f: { ate: number | null }) =>
     f.ate === null ? "" : String(f.ate).replace(".", ",");
@@ -465,7 +476,9 @@ function ListaDeFaixas({
         </label>
 
         <label className="text-sm">
-          <span className="text-muted block text-xs">Limite</span>
+          <span className="text-muted block text-xs">
+            {novaFinal ? `"${rotuloAnterior}" passa a terminar em` : "Limite"}
+          </span>
           <div className="mt-1 flex items-center gap-1">
             <span className="text-muted text-xs">{unidade}</span>
             <input
@@ -481,10 +494,11 @@ function ListaDeFaixas({
         <button
           onClick={async () => {
             if (!podeAdicionar) return;
-            const ok = await onAdicionar(novoRotulo.trim(), ate!);
+            const ok = await onAdicionar(novoRotulo.trim(), ate!, novaFinal);
             if (ok) {
               setNovoRotulo("");
               setNovoAte("");
+              setNovaFinal(false);
             }
           }}
           disabled={!podeAdicionar}
@@ -492,6 +506,26 @@ function ListaDeFaixas({
         >
           Adicionar
         </button>
+
+        {/* Sem esta opção não havia como estender o topo: toda faixa nova
+            nascia com teto e ia parar antes da que recolhe o resto. */}
+        <label className="flex w-full items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={novaFinal}
+            onChange={(e) => setNovaFinal(e.target.checked)}
+          />
+          <span className={novaFinal ? "" : "text-muted"}>
+            Esta é a nova última faixa, sem teto
+          </span>
+        </label>
+
+        {novaFinal && (
+          <p className="text-muted w-full text-xs">
+            A faixa <strong>{rotuloAnterior}</strong> deixa de ser aberta e passa a terminar no
+            limite acima. Renomeie-a depois, se o nome dela disser &ldquo;acima de&rdquo;.
+          </p>
+        )}
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ import {
   calcular,
   comFaixaAdicionada,
   comFaixaAlterada,
+  comFaixaFinalAdicionada,
   comoCanal,
   precoParaMargem,
   semFaixa,
@@ -455,6 +456,45 @@ conferirFaixa(
   semUltima.faixasPeso[semUltima.faixasPeso.length - 1].ate === null &&
     buscarFrete(semUltima, 500, 30).valor > 0
 );
+
+// Estender o topo: a faixa aberta ganha teto e uma nova nasce aberta acima.
+const antesNoTopo = buscarFrete(FRETE, 0.2, 5000).valor;
+const comTopo = comFaixaFinalAdicionada(FRETE, "preco", {
+  rotulo: "Acima de R$ 300",
+  tetoAnterior: 300,
+});
+const ultimaPreco = comTopo.faixasPreco[comTopo.faixasPreco.length - 1];
+const penultimaPreco = comTopo.faixasPreco[comTopo.faixasPreco.length - 2];
+
+conferirFaixa(
+  "a faixa nova e a ultima, e e ela que fica sem teto",
+  ultimaPreco.rotulo === "Acima de R$ 300" && ultimaPreco.ate === null,
+  `ultima: "${ultimaPreco.rotulo}"`
+);
+conferirFaixa(
+  "a que era aberta ganha o teto informado",
+  penultimaPreco.ate === 300,
+  `"${penultimaPreco.rotulo}" agora termina em ${penultimaPreco.ate}`
+);
+conferirFaixa("continua crescente", crescente(tetos(comTopo, "preco")));
+conferirFaixa(
+  "quem estava acima do teto antigo nao muda de preco",
+  buscarFrete(comTopo, 0.2, 5000).valor === antesNoTopo,
+  `R$ ${buscarFrete(comTopo, 0.2, 5000).valor}`
+);
+conferirFaixa(
+  "e quem ficou no meio tambem nao",
+  buscarFrete(comTopo, 0.2, 250).valor === buscarFrete(FRETE, 0.2, 250).valor
+);
+
+let tetoBaixo = false;
+try {
+  comFaixaFinalAdicionada(FRETE, "preco", { rotulo: "X", tetoAnterior: 100 });
+} catch {
+  tetoBaixo = true;
+}
+conferirFaixa("teto abaixo da faixa anterior e recusado", tetoBaixo);
+
 
 // --- Interruptor da antecipação ---------------------------------------------
 // Desligar precisa zerar a taxa no cálculo sem apagar o percentual guardado,

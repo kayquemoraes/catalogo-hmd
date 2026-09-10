@@ -73,6 +73,11 @@ As faixas ficam sempre em ordem crescente de teto, e limites repetidos são
 recusados — a busca percorre a lista e para na primeira faixa que alcança o
 valor, então uma faixa fora de ordem simplesmente nunca seria escolhida.
 
+Para estender o topo da tabela existe a opção **esta é a nova última faixa**:
+a faixa que era aberta ganha o limite informado e a nova nasce sem teto acima
+dela. São duas mudanças que precisam acontecer juntas — feita só uma, a tabela
+ganharia um limite máximo ou passaria a ter duas faixas abertas.
+
 Uma faixa nova nasce cobrando o que a faixa seguinte já cobrava naquele
 intervalo: é o único padrão que não muda nenhum preço no instante da criação.
 Remover devolve o intervalo para a faixa seguinte, que é o que valia antes de
