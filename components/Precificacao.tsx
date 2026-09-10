@@ -175,15 +175,14 @@ export default function Precificacao() {
         };
 
   /**
-   * Clássico e Premium são duas leituras da mesma linha, e sem separação
-   * viram quatorze colunas indistintas. O segundo bloco ganha um fundo
-   * levemente mais escuro e uma etiqueta invertida; a divisa entre eles é
-   * mais grossa que as demais.
+   * Clássico e Premium se distinguem pela etiqueta e pela divisa grossa entre
+   * os blocos — não por fundo. Colorir só uma das modalidades marcaria uma
+   * delas em vez de separar as duas, e cortaria a listra que atravessa a
+   * linha, que é o que permite ler o nome à esquerda e acompanhar até a
+   * direita sem perder a altura.
    */
-  const estilo = (indice: number) =>
-    indice === 1
-      ? { fundo: "bg-sage/35", etiqueta: "bg-ink text-paper" }
-      : { fundo: "", etiqueta: "bg-signal/15 text-signal" };
+  const etiquetaDaModalidade = (indice: number) =>
+    indice === 1 ? "bg-ink text-paper" : "bg-signal/15 text-signal";
 
   // --- cálculo -------------------------------------------------------------
 
@@ -470,7 +469,7 @@ export default function Precificacao() {
 
             <thead>
               <tr>
-                <th className="bg-sage border-sage sticky top-0 z-20 border-b px-3 py-2.5 text-left font-semibold">
+                <th className="bg-sage border-sage sticky top-0 z-20 border-r border-b px-3 py-2.5 text-left font-semibold">
                   Produto
                 </th>
                 <th className="bg-sage border-sage sticky top-0 z-20 border-b px-1 py-2.5 font-semibold">
@@ -486,7 +485,7 @@ export default function Precificacao() {
                     className="bg-sage border-sage border-l-ink-line/40 sticky top-0 z-20 border-b border-l-2 px-2 py-2"
                   >
                     <span
-                      className={`${estilo(i).etiqueta} inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wider uppercase`}
+                      className={`${etiquetaDaModalidade(i)} inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wider uppercase`}
                     >
                       {ROTULO[m]}
                     </span>
@@ -496,7 +495,7 @@ export default function Precificacao() {
               </tr>
 
               <tr>
-                <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-3 py-1.5 text-left font-normal">
+                <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-r border-b px-3 py-1.5 text-left font-normal">
                   SKU · marca
                 </th>
                 <th className="bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal">
@@ -506,8 +505,7 @@ export default function Precificacao() {
                   kg
                 </th>
                 {modalidades.map((m, i) => {
-                  const fundo = estilo(i).fundo || "bg-paper-raised";
-                  const secundaria = `${fundo} border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal`;
+                  const secundaria = `bg-paper-raised border-sage text-muted sticky top-[36px] z-20 border-b px-1 py-1.5 font-normal`;
                   const chave =
                     "bg-signal-soft border-sage text-signal sticky top-[36px] z-20 border-b px-1 py-1.5 font-semibold";
                   return (
@@ -536,8 +534,8 @@ export default function Precificacao() {
               )}
 
               {linhas.map((linha) => (
-                <tr key={linha.sku} className="border-sage/50 border-b text-center transition-[filter] hover:brightness-[0.96]">
-                  <td className="px-3 py-1.5 text-left">
+                <tr key={linha.sku} className="border-sage/40 even:bg-sage/25 hover:bg-signal-soft! border-b text-center">
+                  <td className="border-sage/40 border-r px-3 py-1.5 text-left">
                     <span className="block truncate font-medium" title={linha.nome}>
                       {linha.nome}
                     </span>
@@ -572,7 +570,7 @@ export default function Precificacao() {
                             <td
                               key={m}
                               colSpan={7}
-                              className={`${estilo(i).fundo} border-l-ink-line/40 text-muted border-l-2 px-2 py-1.5`}
+                              className="border-l-ink-line/40 text-muted border-l-2 px-2 py-1.5"
                             >
                               sem anúncio
                             </td>
@@ -584,7 +582,6 @@ export default function Precificacao() {
                             anuncio={anuncio}
                             resultado={calcularAnuncio(linha, anuncio)}
                             temCusto={linha.custo > 0}
-                            fundo={estilo(i).fundo}
                             onComissao={(v) => void aplicar(anuncio.anuncioId, { comissao: v })}
                             onPromocao={(v) => void aplicar(anuncio.anuncioId, { promocao: v })}
                             onPreco={(v) => void aplicar(anuncio.anuncioId, { preco: v })}
@@ -651,7 +648,6 @@ function Celulas({
   anuncio,
   resultado,
   temCusto,
-  fundo,
   onComissao,
   onPromocao,
   onPreco,
@@ -660,8 +656,6 @@ function Celulas({
   anuncio: AnuncioLinha;
   resultado: Resultado | null;
   temCusto: boolean;
-  /** Fundo do bloco da modalidade, para Clássico e Premium se distinguirem. */
-  fundo: string;
   onComissao: (valor: number) => void;
   onPromocao: (valor: number) => void;
   onPreco: (valor: number) => void;
@@ -680,8 +674,10 @@ function Celulas({
   // sem precisar contar cabeçalhos.
   const destaque =
     "num border-signal/40 bg-paper-raised w-full rounded-[4px] border px-1 py-1 text-center text-sm font-semibold focus:border-signal disabled:cursor-not-allowed disabled:opacity-40";
-  const celulaDestaque = "bg-signal-soft/70 px-1 py-1.5";
-  const celula = `${fundo} px-1 py-1.5`;
+  // Translúcido de propósito: a listra da linha precisa aparecer por baixo,
+  // senão a faixa se interrompe justamente nas colunas mais olhadas.
+  const celulaDestaque = "bg-signal-soft/45 px-1 py-1.5";
+  const celula = "px-1 py-1.5";
 
   return (
     <>
