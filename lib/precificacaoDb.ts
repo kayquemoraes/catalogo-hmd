@@ -454,7 +454,7 @@ export async function criarCanal(entrada: EntradaCanal): Promise<CanalSalvo> {
  */
 export async function atualizarCanal(
   id: number,
-  entrada: Omit<EntradaCanal, "tipo">
+  entrada: Omit<EntradaCanal, "tipo" | "antecipacaoAtiva"> & { antecipacaoAtiva?: boolean }
 ): Promise<void> {
   await ensureSchemaPrecificacao();
   await sql`
@@ -462,7 +462,9 @@ export async function atualizarCanal(
        SET nome = ${entrada.nome},
            imposto = ${entrada.imposto},
            antecipacao = ${entrada.antecipacao},
-           antecipacao_ativa = ${entrada.antecipacaoAtiva},
+           -- Ausente significa "não mexa": quem não edita o interruptor não
+           -- deve reescrevê-lo com uma cópia que pode estar velha.
+           antecipacao_ativa = coalesce(${entrada.antecipacaoAtiva ?? null}, antecipacao_ativa),
            embalagem = ${entrada.embalagem},
            promocao = ${entrada.promocaoPadrao}
      WHERE id = ${id}

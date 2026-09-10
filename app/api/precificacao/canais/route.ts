@@ -98,7 +98,8 @@ export async function PATCH(req: Request) {
       nome,
       imposto: fracao(corpo.imposto, "Imposto"),
       antecipacao: fracao(corpo.antecipacao, "Antecipação"),
-      antecipacaoAtiva: Boolean(corpo.antecipacaoAtiva),
+      antecipacaoAtiva:
+        corpo.antecipacaoAtiva === undefined ? undefined : Boolean(corpo.antecipacaoAtiva),
       embalagem: reais(corpo.embalagem, "Embalagem"),
       promocaoPadrao: fracao(corpo.promocaoPadrao, "Promoção padrão"),
     });
