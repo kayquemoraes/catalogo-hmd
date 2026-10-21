@@ -125,12 +125,31 @@ async function tokenValido(): Promise<string> {
     return linha.access_token;
   }
 
-  const tokens = await pedirTokens({
-    grant_type: "refresh_token",
-    refresh_token: linha.refresh_token,
-  });
-  await guardar(tokens);
-  return tokens.access_token;
+  try {
+    const tokens = await pedirTokens({
+      grant_type: "refresh_token",
+      refresh_token: linha.refresh_token,
+    });
+    await guardar(tokens);
+    return tokens.access_token;
+  } catch (erro) {
+    const mensagem = erro instanceof Error ? erro.message : String(erro);
+
+    // O Bling vence o token de renovação depois de um tempo sem uso. Guardar
+    // tokens mortos faria a aplicação se dizer conectada para sempre, e o
+    // painel esconderia justamente o botão que resolve — foi o que aconteceu
+    // depois de o site passar trinta dias desligado.
+    if (/invalid_grant|expired/i.test(mensagem)) {
+      await desconectar();
+      throw new Error(
+        "A autorização do Bling venceu — isso acontece quando o painel passa " +
+          "muito tempo sem ser usado. Clique em Conectar conta do Bling para " +
+          "autorizar de novo; nada do que está guardado se perde."
+      );
+    }
+
+    throw erro;
+  }
 }
 
 // ------------------------------------------------------------

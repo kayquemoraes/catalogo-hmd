@@ -166,13 +166,26 @@ export default function Painel() {
               )}
 
               {status?.conectado && (
-                <button
-                  onClick={lerCatalogo}
-                  disabled={rodando}
-                  className="bg-signal rounded-[6px] px-4 py-2.5 text-sm font-medium text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {rodando ? "Leitura em andamento" : "Ler catálogo agora"}
-                </button>
+                <>
+                  <button
+                    onClick={lerCatalogo}
+                    disabled={rodando}
+                    className="bg-signal rounded-[6px] px-4 py-2.5 text-sm font-medium text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {rodando ? "Leitura em andamento" : "Ler catálogo agora"}
+                  </button>
+
+                  {/* Sempre à mão, mesmo com a conta dada como conectada: a
+                      autorização pode ter vencido sem a aplicação saber, e sem
+                      este caminho não haveria como refazê-la pela tela. */}
+                  <a
+                    href="/bling/authorize"
+                    title="Refazer a autorização no Bling"
+                    className="border-ink-line rounded-[6px] border px-4 py-2.5 text-sm font-medium hover:bg-ink-soft"
+                  >
+                    Reconectar Bling
+                  </a>
+                </>
               )}
             </div>
           </div>
